@@ -470,6 +470,33 @@ Example payload as sent:
 }
 ```
 
+### `vault_passphrase_needed`
+
+How many people hit a machine with no OS keychain (MD-155); no content. Emitted from: ui.
+
+| Property | Allowed values |
+|---|---|
+| `step` | `consent` / `choose_source` / `authorize` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
+
+Example payload as sent:
+
+```json
+{
+  "event": "vault_passphrase_needed",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "step": "authorize",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
 
 ## B. Value and habit
 

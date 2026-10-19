@@ -5,7 +5,7 @@ or never answer, nothing is sent. You can change your mind any time in **Setting
 `mdpipeline usage off`.
 
 Your files, and what is in them, never leave your computer through this. Markdown Pipeline only reads your sources (it never changes them) and
-writes Markdown files to a folder on your computer. The folder browser (the **Browse** button) lists only folder names on your computer, to your
+writes Markdown files to a folder on your computer, or to a GitHub repo you choose. The folder browser (the **Browse** button) lists only folder names on your computer, to your
 screen; nothing it shows is sent anywhere.
 
 ## What is never sent
@@ -25,7 +25,7 @@ you open the app. We do not build a profile of a person.
 | You open a new version | `app_updated` | the previous version |
 | You install | `install_completed` | your operating system and how you installed |
 | You answer the usage question | `consent_decided` | that you chose "Share" |
-| You move through the first run | `onboarding_step_viewed`, `onboarding_step_completed`, `session_ended_before_first_sync` | which step, and how long it took |
+| You move through the first run | `onboarding_step_viewed`, `onboarding_step_completed`, `session_ended_before_first_sync`, `vault_passphrase_needed` | which step, and how long it took; that this computer has no system keychain (nothing you typed) |
 | You start adding a source | `source_add_started` | which kind of source (Jira, folder...), and where you started |
 | You sign in to a source | `source_auth_started`, `source_auth_completed`, `source_auth_failed` | the kind of source, token or not, and a short error class such as "wrong credentials" |
 | A source is connected | `source_connected`, `source_added`, `source_toggled`, `source_removed`, `pipeline_created` | the kind of source, how many sources or pipelines, on or off, and how old it was (a range) |

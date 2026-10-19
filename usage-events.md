@@ -101,7 +101,7 @@ Where people stop (the key funnel). Emitted from: ui.
 
 | Property | Allowed values |
 |---|---|
-| `step` | `consent` / `choose_source` / `authorize` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
+| `step` | `consent` / `choose_source` / `authorize` / `choose_scope` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
 
 Example payload as sent:
 
@@ -124,13 +124,14 @@ Example payload as sent:
 
 ### `onboarding_step_completed`
 
-Where people stop (the key funnel); on the review step also whether the first run writes to a folder or a GitHub repo (MD-152, H-TGT-1). Emitted from: ui.
+Where people stop (the key funnel); on the where-files-go step also whether the first run writes to a folder or a GitHub repo, and whether the suggested folder was edited (MD-152, MD-159, H-TGT-1, H-DEST-1). Emitted from: ui.
 
 | Property | Allowed values |
 |---|---|
-| `step` | `consent` / `choose_source` / `authorize` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
+| `step` | `consent` / `choose_source` / `authorize` / `choose_scope` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
 | `ms_on_step` | whole number, 0 to 3,000,000,000 |
 | `target` | `directory` / `github` |
+| `dest_changed` | `true` / `false` |
 
 Example payload as sent:
 
@@ -141,9 +142,10 @@ Example payload as sent:
   "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
-    "step": "preview",
+    "step": "choose_target",
     "ms_on_step": 21000,
     "target": "directory",
+    "dest_changed": false,
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -449,7 +451,7 @@ Abandonment point. Emitted from: ui.
 
 | Property | Allowed values |
 |---|---|
-| `last_step` | `consent` / `choose_source` / `authorize` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
+| `last_step` | `consent` / `choose_source` / `authorize` / `choose_scope` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
 
 Example payload as sent:
 
@@ -476,7 +478,7 @@ How many people hit a machine with no OS keychain (MD-155); no content. Emitted 
 
 | Property | Allowed values |
 |---|---|
-| `step` | `consent` / `choose_source` / `authorize` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
+| `step` | `consent` / `choose_source` / `authorize` / `choose_scope` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
 
 Example payload as sent:
 

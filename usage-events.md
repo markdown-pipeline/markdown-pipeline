@@ -1238,7 +1238,7 @@ Reliability notices users get. Emitted from: ui, engine.
 
 | Property | Allowed values |
 |---|---|
-| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` |
+| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` |
 
 Example payload as sent:
 

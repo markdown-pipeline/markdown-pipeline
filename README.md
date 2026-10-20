@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/markdown-pipeline/markdown-pipeline
 It installs the latest release from this page. No GitHub account, token or sign-in is needed. Then type `mdpipeline`: your browser opens the app. If your shell says `mdpipeline: command not found`, open a new terminal (or run `uv tool update-shell`) and try again.
 Run the same command again any time to move to the newest release; your settings and pipelines are kept.
 
-**Platforms:** Linux (tested). macOS is untested. On Windows, use WSL 2 (Ubuntu) and run the command inside it. On a server or in WSL 2 there is no desktop login, so after a reboot start background sync with `mdpipeline background`.
+**Platforms:** Linux (tested). macOS is untested. On Windows, use WSL 2 (Ubuntu) and run the command inside it. On a server or in WSL 2, background sync stops when you log out unless you run `loginctl enable-linger $USER` once; after a reboot, logging in or running any `mdpipeline` command starts it again.
 
 ## What we send
 

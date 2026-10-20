@@ -1285,3 +1285,30 @@ Example payload as sent:
   }
 }
 ```
+
+### `background_started`
+
+How the background process got started: the login item, the systemd user service, the app's own restart, or by hand (MD-165, H-HEADLESS-1: how many installs have no desktop login); no content. Emitted from: cli.
+
+| Property | Allowed values |
+|---|---|
+| `how` | `login_item` / `user_service` / `app_start` / `manual` |
+
+Example payload as sent:
+
+```json
+{
+  "event": "background_started",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "how": "user_service",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```

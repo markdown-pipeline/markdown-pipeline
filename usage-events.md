@@ -1207,8 +1207,8 @@ The why behind drop-offs (an explicit send). Emitted from: ui.
 
 | Property | Allowed values |
 |---|---|
-| `question_id` | `first_sync_expectation` / `no_agent_read_3d` / `last_source_removed` |
-| `answer` | `yes` / `partly` / `no` / `other` / `no_agent_installed` / `dont_know_how` / `tried_failed` / `no_time` / `files_not_useful` / `just_testing` / `wrong_source` / `not_useful` / `privacy_worry` / `broke` |
+| `question_id` | `first_sync_expectation` / `no_agent_read_3d` / `last_source_removed` / `stopped_before_first_sync` |
+| `answer` | `yes` / `partly` / `no` / `other` / `no_agent_installed` / `dont_know_how` / `tried_failed` / `no_time` / `files_not_useful` / `just_testing` / `wrong_source` / `not_useful` / `privacy_worry` / `broke` / `reads_folder_directly` / `sign_in_trouble` / `step_unclear` / `source_missing` / `just_looking` |
 | `comment` | words the person typed and pressed Send on, up to 500 characters (explicit sends only; labelled "goes to the team") |
 
 Example payload as sent:
@@ -1234,11 +1234,12 @@ Example payload as sent:
 
 ### `notice_shown`
 
-Reliability notices users get. Emitted from: ui, engine.
+Reliability notices users get; for the headless-Linux linger line (kind `linger`, MD-168, H-LINGER-1) also the screen it was shown on, at most once per screen per day. Emitted from: ui, engine, cli.
 
 | Property | Allowed values |
 |---|---|
-| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` / `vault_unsafe` |
+| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` / `vault_unsafe` / `linger` |
+| `surface` | `ready` / `home` / `settings` / `cli` |
 
 Example payload as sent:
 
@@ -1249,7 +1250,37 @@ Example payload as sent:
   "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
-    "kind": "sync_failed",
+    "kind": "linger",
+    "surface": "home",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
+### `notice_hidden`
+
+The person pressed Hide on the linger line on Home (MD-168, H-LINGER-1); a fixed kind and screen, nothing else. Emitted from: ui.
+
+| Property | Allowed values |
+|---|---|
+| `kind` | `linger` |
+| `surface` | `ready` / `home` / `settings` / `cli` |
+
+Example payload as sent:
+
+```json
+{
+  "event": "notice_hidden",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "kind": "linger",
+    "surface": "home",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -1288,11 +1319,13 @@ Example payload as sent:
 
 ### `background_started`
 
-How the background process got started: the login item, the systemd user service, the app's own restart, or by hand (MD-165, H-HEADLESS-1: how many installs have no desktop login); no content. Emitted from: cli.
+How the background process got started: the login item, the systemd user service, the app's own restart, or by hand (MD-165, H-HEADLESS-1: how many installs have no desktop login); whether a desktop session exists and whether systemd lingering is on (MD-168, yes/no/unknown, read only); no content. Emitted from: cli.
 
 | Property | Allowed values |
 |---|---|
 | `how` | `login_item` / `user_service` / `app_start` / `manual` |
+| `desktop_session` | `yes` / `no` / `unknown` |
+| `linger_enabled` | `yes` / `no` / `unknown` |
 
 Example payload as sent:
 
@@ -1304,6 +1337,8 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "how": "user_service",
+    "desktop_session": "no",
+    "linger_enabled": "no",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",

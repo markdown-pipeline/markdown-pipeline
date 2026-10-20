@@ -26,7 +26,7 @@ you open the app. We do not build a profile of a person.
 | You install | `install_completed` | your operating system and how you installed |
 | You answer the usage question | `consent_decided` | that you chose "Share" |
 | You move through the first run | `onboarding_step_viewed`, `onboarding_step_completed`, `session_ended_before_first_sync`, `secret_store_used` | which step, and how long it took; at the where-files-go step, whether you chose a folder or GitHub and whether you changed the suggested folder (yes or no, never the path); whether your secrets are kept by the system keychain or, when there is none, in a file only your user can read (nothing you typed) |
-| Background sync starts | `background_started` | how it was started: at login, by the system service, by the app, or by hand. Nothing else |
+| Background sync starts | `background_started` | how it was started: at login, by the system service, by the app, or by hand; whether this computer has a desktop session (yes, no, or unknown); and whether Linux keeps your background sync running after you log out ("linger" is on, off, or unknown). The app only reads that setting and never changes it. Nothing else |
 | You start adding a source | `source_add_started` | which kind of source (Jira, folder...), and where you started |
 | You sign in to a source | `source_auth_started`, `source_auth_completed`, `source_auth_failed` | the kind of source, token or not, and a short error class such as "wrong credentials" |
 | A source is connected | `source_connected`, `source_added`, `source_toggled`, `source_removed`, `pipeline_created` | the kind of source, how many sources or pipelines, on or off, and how old it was (a range) |
@@ -39,7 +39,8 @@ you open the app. We do not build a profile of a person.
 | Your first files are written | `first_sync_completed` | the kind of source, how many files (range) and how long it took |
 | A sync runs | `sync_completed`, `sync_failed` | what started it (you or the schedule), counts as ranges, duration, and an error class |
 | A sync waits for your OK | `guard_triggered`, `guard_resolved` | that it happened, and whether you approved or cancelled |
-| A notice appears | `notice_shown` | which kind (failed, stale...) |
+| A notice appears | `notice_shown` | which kind (failed, stale...). For the one-line reminder that background sync stops when you log out of a Linux server: that it was shown, and on which screen (first-run Ready, Home, Settings or the command line), at most once a day per screen |
+| You hide that reminder | `notice_hidden` | that you pressed Hide on Home. Nothing else |
 | You change the sync interval | `schedule_changed` | the old and the new interval |
 | You open Activity or the pipeline view | `activity_viewed`, `view_mode_opened` | where you came from |
 | You open a help page or see an error | `help_opened`, `error_shown` | which topic, which area and error class |
@@ -59,7 +60,7 @@ Two screens let you send words, only when you press **Send**. These go out even 
 
 - **Request a source** (`source_requested`): the source you picked from the list, or the name you typed (up to 100 characters), and an email
   address only if you choose to add one so we can tell you when it is ready.
-- **One-question feedback** (`feedback_answered`): which question, the answer you picked, and a comment only if you write one (up to 500 characters).
+- **One-question feedback** (`feedback_answered`): which question, the answer you picked, and a comment only if you write one (up to 500 characters). The questions are: why you removed your last source; whether the first sync was what you expected; which fits best when no connected agent has read your files three days after the first sync (one answer is "my agent already reads the files from the folder"); and, once, the next time you open the app after you left the first run before your first files, "what got in the way?" (answers include "I was only looking around"). Whether you left the first run early is remembered on your computer only, to decide whether to ask; nothing is sent about it unless you press Send on the question.
 
 ## How it is sent, and how to see it
 

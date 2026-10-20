@@ -25,7 +25,7 @@ you open the app. We do not build a profile of a person.
 | You open a new version | `app_updated` | the previous version |
 | You install | `install_completed` | your operating system and how you installed |
 | You answer the usage question | `consent_decided` | that you chose "Share" |
-| You move through the first run | `onboarding_step_viewed`, `onboarding_step_completed`, `session_ended_before_first_sync`, `vault_passphrase_needed` | which step, and how long it took; at the where-files-go step, whether you chose a folder or GitHub and whether you changed the suggested folder (yes or no, never the path); that this computer has no system keychain (nothing you typed) |
+| You move through the first run | `onboarding_step_viewed`, `onboarding_step_completed`, `session_ended_before_first_sync`, `secret_store_used` | which step, and how long it took; at the where-files-go step, whether you chose a folder or GitHub and whether you changed the suggested folder (yes or no, never the path); whether your secrets are kept by the system keychain or, when there is none, in a file only your user can read (nothing you typed) |
 | You start adding a source | `source_add_started` | which kind of source (Jira, folder...), and where you started |
 | You sign in to a source | `source_auth_started`, `source_auth_completed`, `source_auth_failed` | the kind of source, token or not, and a short error class such as "wrong credentials" |
 | A source is connected | `source_connected`, `source_added`, `source_toggled`, `source_removed`, `pipeline_created` | the kind of source, how many sources or pipelines, on or off, and how old it was (a range) |

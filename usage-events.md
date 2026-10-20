@@ -472,24 +472,24 @@ Example payload as sent:
 }
 ```
 
-### `vault_passphrase_needed`
+### `secret_store_used`
 
-How many people hit a machine with no OS keychain (MD-155); no content. Emitted from: ui.
+Which store keeps the person's secrets: the OS keychain or the user-only file when there is none (MD-163, H-KEY-1: the share of users without a keychain); no content. Emitted from: ui.
 
 | Property | Allowed values |
 |---|---|
-| `step` | `consent` / `choose_source` / `authorize` / `choose_scope` / `choose_target` / `preview` / `first_sync` / `connect_agent` |
+| `store` | `keychain` / `file` |
 
 Example payload as sent:
 
 ```json
 {
-  "event": "vault_passphrase_needed",
+  "event": "secret_store_used",
   "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
   "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
-    "step": "authorize",
+    "store": "file",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -1238,7 +1238,7 @@ Reliability notices users get. Emitted from: ui, engine.
 
 | Property | Allowed values |
 |---|---|
-| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` |
+| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` / `vault_unsafe` |
 
 Example payload as sent:
 

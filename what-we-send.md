@@ -46,6 +46,7 @@ you open the app. We do not build a profile of a person.
 | You open a help page or see an error | `help_opened`, `error_shown` | which topic, which area and error class |
 | You connect or copy for your agent | `agent_connected`, `agent_snippet_copied` | which agent (Claude Code or Codex) and whether it was one click or a copy |
 | Your agent reads the files | `agent_read`, `first_agent_read` | how many reads that day, and how long after the first sync. Nothing about what was read |
+| A one-question card is shown | `feedback_shown` | which question it was (one of a fixed list). Each card appears only once on a computer, so this is sent once per card. Never the question's text or your answer |
 | You try the sample | `try_started`, `try_completed` | that you started it, and how long it took |
 
 Every event also says, as a plain yes or no, whether the install belongs to the developers (`is_internal`), so our own testing is not counted as users.

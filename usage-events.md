@@ -1232,6 +1232,33 @@ Example payload as sent:
 }
 ```
 
+### `feedback_shown`
+
+How many times each one-question card was shown, so the answer rate can be read (MD-172): only which question, never its text. Emitted from: ui.
+
+| Property | Allowed values |
+|---|---|
+| `question_id` | `first_sync_expectation` / `no_agent_read_3d` / `last_source_removed` / `stopped_before_first_sync` |
+
+Example payload as sent:
+
+```json
+{
+  "event": "feedback_shown",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "question_id": "first_sync_expectation",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
 ### `notice_shown`
 
 Reliability notices users get; for the headless-Linux linger line (kind `linger`, MD-168, H-LINGER-1) also the screen it was shown on, at most once per screen per day. Emitted from: ui, engine, cli.

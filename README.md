@@ -5,6 +5,8 @@ Your team's tools as clean Markdown files, kept current for your AI agents. Earl
 - **Local.** It runs on your computer. Your files go to a folder you choose, or to a GitHub repo you choose.
 - **We only read.** We never change anything in Jira or in your source folders.
 - **Raw layer only.** It does not summarize or analyze anything. Your agent (Claude Code, Codex) does that, from the files.
+- **It sees what you see.** It reads Jira with your own account's API token, so the files hold only the issues your account can read. The token never appears in the files, the logs or your agent's answers. Anyone who can open the folder or repo you choose can read the files, so choose it the way you'd choose who sees those issues.
+- **Open source.** Apache-2.0. The code that reads your Jira is in this repository.
 
 ## Install
 
@@ -19,6 +21,16 @@ Run the same command again any time to move to the newest release; your settings
 
 **Platforms:** Linux (tested). macOS is untested. On Windows, use WSL 2 (Ubuntu) and run the command inside it. On a server or in WSL 2, background sync stops when you log out unless you run `loginctl enable-linger $USER` once; after a reboot, logging in or running any `mdpipeline` command starts it again.
 
+## Use it from your agent (MCP)
+
+The app includes a local MCP server, so Claude Code or Codex can search and read the files.
+
+```bash
+mdpipeline connect --agent claude   # or: --agent codex
+```
+
+It prints the exact command (Claude Code) or config block (Codex) for your setup. Your agent starts the server itself when it needs it; nothing extra runs in the background. Tools: `search`, `read`, `list`, `recent_changes` ("what changed since yesterday?"), `sync_status` and `sync`. No tool writes or edits your files. The server reads only the Markdown files the app wrote (and your `raw/` and `wiki/` folders), on your computer.
+
 ## What we send
 
 Usage data only if you choose to share it, and the words you type in a feedback or source request when you press Send.
@@ -31,3 +43,9 @@ Open an issue on this repository: [Issues](https://github.com/markdown-pipeline/
 ## Uninstall
 
 `mdpipeline uninstall` turns background sync off and prints the one command that removes the program. The Markdown files it wrote stay where they are.
+
+Full reference (commands, settings, safety rules): [docs/reference.md](docs/reference.md).
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

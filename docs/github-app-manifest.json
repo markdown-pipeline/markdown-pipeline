@@ -1,0 +1,13 @@
+{
+  "name": "Markdown Pipeline",
+  "url": "https://github.com/markdown-pipeline/markdown-pipeline",
+  "description": "Syncs Markdown from your team's tools into a GitHub repository you choose. Signs you in with the device flow; it only writes files under raw/ and its own state file.",
+  "public": false,
+  "default_permissions": {
+    "contents": "write",
+    "metadata": "read"
+  },
+  "default_events": [],
+  "request_oauth_on_install": false,
+  "setup_on_update": false
+}

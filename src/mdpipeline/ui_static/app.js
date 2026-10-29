@@ -1922,4 +1922,6 @@ document.addEventListener("change", (ev) => {
 
 /* ---------------------------------------------------------------- boot */
 window.addEventListener("popstate", routeFromHash);
-refresh().then(() => { if (/^#\/pipeline\//.test(location.hash)) routeFromHash(); setInterval(poll, POLL_MS); });
+// Start only when every script has run: firstrun.js, agents.js ... load after this file, and an early server answer would call their functions before they exist.
+function boot() { refresh().then(() => { if (/^#\/pipeline\//.test(location.hash)) routeFromHash(); setInterval(poll, POLL_MS); }); }
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();

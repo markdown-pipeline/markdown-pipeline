@@ -228,3 +228,23 @@ def test_a_real_command_with_a_terminal_stdin_and_a_piped_stderr_answers_within_
         os.close(master)
         os.close(slave)
     assert done.returncode == 0 and "Client ID:" in done.stdout
+
+
+# --- MD-197 (marketing MM-147): a uvx / Registry user has no `mdpipeline` on PATH, so the card and hint name `uvx mdpipeline usage ...` ---------
+@pytest.mark.parametrize("method", ["uvx", "registry"])
+def test_the_card_and_hint_name_the_uvx_command_for_uvx_and_registry_installs(method):
+    assert "`uvx mdpipeline usage on|off`" in cli.usage_card(method)
+    assert "uvx mdpipeline usage on." in cli.usage_hint(method) and "uvx mdpipeline usage status" in cli.usage_hint(method)
+
+
+@pytest.mark.parametrize("method", ["uv", "script", "pipx", "pip", "source"])
+def test_the_card_and_hint_name_the_plain_command_for_other_installs(method):
+    assert "`mdpipeline usage on|off`" in cli.usage_card(method) and "uvx" not in cli.usage_card(method)
+    assert "mdpipeline usage on." in cli.usage_hint(method) and "uvx" not in cli.usage_hint(method)
+
+
+def test_a_non_interactive_uvx_run_prints_the_uvx_hint(capsys, monkeypatch):
+    monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "uvx")
+    monkeypatch.setattr(cli, "interactive", lambda: False)
+    _, _, err = run(capsys, *CHEAP)
+    assert "uvx mdpipeline usage on" in err

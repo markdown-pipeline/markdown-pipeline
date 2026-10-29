@@ -18,6 +18,8 @@ def update_command(method: str) -> list[str] | None:
         return ["uv", "tool", "upgrade", PACKAGE]
     if method == "pipx":
         return ["pipx", "upgrade", PACKAGE]
+    if method in ("uvx", "registry"):      # MD-197: nothing is installed; clearing uv's copy makes the next `uvx mdpipeline` fetch the newest release
+        return ["uv", "cache", "clean", PACKAGE]
     if method in ("pip", "other"):
         return [sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE]
     return None
@@ -25,7 +27,8 @@ def update_command(method: str) -> list[str] | None:
 
 def uninstall_command(method: str) -> str:
     """The last step, which only the package manager can do (it removes the program that is running)."""
-    return {"uv": "uv tool uninstall mdpipeline", "script": "uv tool uninstall mdpipeline", "pipx": "pipx uninstall mdpipeline",
+    return {"uvx": "uv cache clean mdpipeline   (uvx keeps only a cached copy of the program; this removes it)", "registry": "uv cache clean mdpipeline   (if you run it with uvx; with pipx: pipx uninstall mdpipeline)",
+            "uv": "uv tool uninstall mdpipeline", "script": "uv tool uninstall mdpipeline", "pipx": "pipx uninstall mdpipeline",
             "source": "uv tool uninstall mdpipeline   (and delete your checkout of the source if you no longer need it)"}.get(
         method, f"{sys.executable} -m pip uninstall mdpipeline")
 

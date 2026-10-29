@@ -55,8 +55,10 @@ def api_for(spec: GitHubSpec) -> GitHubApi:
         from .github_signin import SignInCredential
 
         kind, name = parse_ref(spec.credential)
-        return GitHubApi(SignInCredential(name).token if kind == "vault" else (lambda: resolve_token(spec.credential)),
-                         api_url=spec.api_url, allowed_hosts=(host,))
+        if kind == "vault":
+            cred = SignInCredential(name)
+            return GitHubApi(cred.token, api_url=spec.api_url, allowed_hosts=(host,), renew=cred.renew, still_rejected=cred.still_rejected)
+        return GitHubApi(lambda: resolve_token(spec.credential), api_url=spec.api_url, allowed_hosts=(host,))
     return GitHubApi(lambda: resolve_token(spec.credential), api_url=spec.api_url, allowed_hosts=(host,))
 
 

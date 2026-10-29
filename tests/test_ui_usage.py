@@ -112,3 +112,11 @@ def test_changes_need_the_session_token(brain):
         assert ui.post("/api/usage/consent", {"choice": "share"}, token=False)[0] == 403
         assert ui.post("/api/usage/reset-id", token=False)[0] == 403
     assert UsageStore().consent == "unanswered"
+
+
+# --- MD-197 (marketing MM-147): the Settings text names the command the person can actually run --------------------------------------
+@pytest.mark.parametrize("method,expected", [("uvx", "uvx mdpipeline"), ("registry", "uvx mdpipeline"), ("uv", "mdpipeline")])
+def test_the_usage_view_carries_the_command_for_the_install_method(brain, monkeypatch, method, expected):
+    monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", method)
+    with running_ui(brain) as ui:
+        assert ui.get("/api/usage")[1]["command"] == expected

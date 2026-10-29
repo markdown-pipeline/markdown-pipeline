@@ -1035,7 +1035,7 @@ Install funnel. Emitted from: cli.
 | Property | Allowed values |
 |---|---|
 | `os` | `macos` / `linux` / `windows` / `other` |
-| `install_method` | `script` / `pip` / `pipx` / `uv` / `source` / `other` |
+| `install_method` | `script` / `pip` / `pipx` / `uv` / `uvx` / `registry` / `source` / `other` |
 
 Example payload as sent:
 
@@ -1261,11 +1261,11 @@ Example payload as sent:
 
 ### `notice_shown`
 
-Reliability notices users get; for the headless-Linux linger line (kind `linger`, MD-168, H-LINGER-1) also the screen it was shown on, at most once per screen per day. Emitted from: ui, engine, cli.
+Reliability notices users get; for the headless-Linux linger line (kind `linger`, MD-168, H-LINGER-1) also the screen it was shown on, at most once per screen per day; kind `setup_mode` (MD-196): an agent started the MCP server before any output folder was set up, at most once per server start. Emitted from: ui, engine, cli, mcp.
 
 | Property | Allowed values |
 |---|---|
-| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` / `vault_unsafe` / `linger` |
+| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` / `vault_unsafe` / `linger` / `setup_mode` |
 | `surface` | `ready` / `home` / `settings` / `cli` |
 
 Example payload as sent:

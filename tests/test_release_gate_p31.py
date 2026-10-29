@@ -145,11 +145,11 @@ def test_05_a_locked_vault_writes_and_deletes_nothing_and_secret_free_pipelines_
 
 
 # 6 -----------------------------------------------------------------------------------------------------------------------
-def test_06_a_token_that_expires_mid_sync_a_failed_refresh_and_a_revoked_sign_in_leave_the_branch_unchanged_and_show_needs_you(world):
-    head = world.fake.head("signin")
+def test_06_a_token_that_expires_mid_sync_is_renewed_and_a_failed_refresh_and_a_revoked_sign_in_leave_the_branch_unchanged_and_show_needs_you(world):
     world.fake.before("PATCH", world.fake.expire_access_tokens, times=1)
     mid = sync_pipeline(world.brain, "viasignin", trigger="cli")
-    assert mid.result == "error" and world.fake.head("signin") == head                       # expired mid-sync
+    assert mid.result == "ok"                                                                 # expired mid-sync (MD-187): renewed once, the same sync completes
+    head = world.fake.head("signin")
     stored = gs.SignInTokens.from_json(vault_mod.default_vault().get(world.si_id))
     stored.expires_at = 1.0
     vault_mod.default_vault().replace(world.si_id, stored.to_json())

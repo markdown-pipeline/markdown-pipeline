@@ -51,6 +51,8 @@ class FakeGitHub:
         self.device_flow_enabled = True
         self.refresh_requires_secret = False
         self.access_ttl = 28800
+        self.clock: Callable[[], float] | None = None       # MD-187: with a clock, an access token really stops working access_ttl seconds after it was issued
+        self._access_expiry: dict[str, float] = {}
         self.rate_remaining = 5000
         self.device_interval = 5                            # seconds GitHub asks the client to wait between polls
         self.sign_in_log: list[dict] = []                  # every sign-in endpoint request (path + form), for network-rule tests
@@ -235,6 +237,8 @@ class FakeGitHub:
         auth = {k.lower(): v for k, v in headers.items()}.get("authorization", "")
         bearer = auth.split(" ", 1)[1] if " " in auth else ""
         user_token = bearer in self._access
+        if user_token and self.clock is not None and self.clock() >= self._access_expiry.get(bearer, float("inf")):
+            self._access[bearer] = False                                  # GitHub's 8 hours are up
         if bearer != self.token and not (user_token and self._access[bearer]):
             return self._reply(401, {"message": "Bad credentials"})
         if path == "/user":
@@ -360,6 +364,8 @@ class FakeGitHub:
         self._counter += 1
         access, refresh = f"ghu_access{self._counter}", f"ghr_refresh{self._counter}"
         self._access[access], self._refresh[refresh] = True, True
+        if self.clock is not None:
+            self._access_expiry[access] = self.clock() + self.access_ttl
         return {"access_token": access, "expires_in": self.access_ttl, "refresh_token": refresh,
                 "refresh_token_expires_in": 15897600, "token_type": "bearer", "scope": ""}
 

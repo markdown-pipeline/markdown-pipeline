@@ -130,14 +130,14 @@ ANSWER = Enum(("yes", "partly", "no", "other",                                  
                "just_testing", "wrong_source", "not_useful", "privacy_worry", "broke",                  # removing the last source
                "reads_folder_directly",                                                                 # MD-168 M1: an agent that reads the folder, not through us
                "sign_in_trouble", "step_unclear", "source_missing", "just_looking"))                                    # MD-168 M3: what stopped the first run (no_time/privacy_worry/broke/other are shared)
-NOTICE_KIND = Enum(("sync_failed", "source_missing", "stale", "guard_blocked", "vault_locked", "vault_unsafe", "linger"))
+NOTICE_KIND = Enum(("sync_failed", "source_missing", "stale", "guard_blocked", "vault_locked", "vault_unsafe", "linger", "setup_mode"))
 NOTICE_SURFACE = Enum(("ready", "home", "settings", "cli"))                       # MD-168 M4: where the linger line was shown (a screen name, never content)
 LINGER_KIND = Enum(("linger",))
 YES_NO_UNKNOWN = Enum(("yes", "no", "unknown"))
 SECRET_STORE = Enum(("keychain", "file"))
 BACKGROUND_HOW = Enum(("login_item", "user_service", "app_start", "manual"))     # MD-165: how the background process was started
 OS_NAME = Enum(("macos", "linux", "windows", "other"))
-INSTALL_METHOD = Enum(("script", "pip", "pipx", "uv", "source", "other"))
+INSTALL_METHOD = Enum(("script", "pip", "pipx", "uv", "uvx", "registry", "source", "other"))
 SCOPE_KIND = Enum(("jql", "glob", "project"))
 FOLDER_METHOD = Enum(("browse", "typed", "recent"))
 BRANCH_METHOD = Enum(("picker", "typed"))
@@ -243,8 +243,8 @@ EVENTS: dict[str, Event] = {
                                {"question_id": "first_sync_expectation", "answer": "partly", "comment": "Missing the comments"}, explicit=True),
     "feedback_shown": Event("How many times each one-question card was shown, so the answer rate can be read (MD-172): only which question, never its text",
                             ("ui",), {"question_id": QUESTION_ID}, {"question_id": "first_sync_expectation"}),
-    "notice_shown": Event("Reliability notices users get; for the headless-Linux linger line (kind `linger`, MD-168, H-LINGER-1) also the screen it was shown on, at most once per screen per day",
-                          ("ui", "engine", "cli"), {"kind": NOTICE_KIND, "surface": NOTICE_SURFACE}, {"kind": "linger", "surface": "home"}),
+    "notice_shown": Event("Reliability notices users get; for the headless-Linux linger line (kind `linger`, MD-168, H-LINGER-1) also the screen it was shown on, at most once per screen per day; kind `setup_mode` (MD-196): an agent started the MCP server before any output folder was set up, at most once per server start",
+                          ("ui", "engine", "cli", "mcp"), {"kind": NOTICE_KIND, "surface": NOTICE_SURFACE}, {"kind": "linger", "surface": "home"}),
     "notice_hidden": Event("The person pressed Hide on the linger line on Home (MD-168, H-LINGER-1); a fixed kind and screen, nothing else",
                            ("ui",), {"kind": LINGER_KIND, "surface": NOTICE_SURFACE}, {"kind": "linger", "surface": "home"}),
     "app_updated": Event("Update adoption", ("ui", "cli"), {"previous_version": Version()}, {"previous_version": "0.3.1"}),

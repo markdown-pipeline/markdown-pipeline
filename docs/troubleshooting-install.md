@@ -36,3 +36,7 @@ It installs the latest public release. No GitHub account, token or sign-in is ne
 - `mdpipeline uninstall` turns background sync off, removes its login item and prints the one command that removes the program. Your synced
   Markdown files stay where they are. The app's own data (settings, saved tokens) is in the folder it names; delete that too if you want
   everything gone.
+- **If you run it with `uvx`** (or added it from the MCP Registry): the first sync turns background sync on, so uvx has left a login item
+  (and a user service where systemd is available) behind. To turn it off and remove the program, run `uvx mdpipeline uninstall`, then
+  `uv cache clean mdpipeline`. `uv cache clean mdpipeline` on its own does not stop background sync: the background process and its
+  login item keep working from their own copy of the program. To only turn background sync off, run `uvx mdpipeline schedule background off`.

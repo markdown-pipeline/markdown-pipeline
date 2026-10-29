@@ -70,3 +70,17 @@ def test_the_install_note_command_records_the_method_and_is_hidden_from_help(app
     except SystemExit:
         pass
     assert "install-note" not in capsys.readouterr().out
+
+
+# --- MD-196/197 (marketing MM-147): one command, chosen by how the app was installed -------------------------------------------
+@pytest.mark.parametrize("method,expected", [("uvx", "uvx mdpipeline"), ("registry", "uvx mdpipeline"), ("uv", "mdpipeline"), ("script", "mdpipeline"),
+                                             ("pipx", "mdpipeline"), ("pip", "mdpipeline"), ("source", "mdpipeline"), ("other", "mdpipeline")])
+def test_the_command_to_show_depends_on_the_install_method(method, expected):
+    assert install_info.command_prefix(method) == expected
+
+
+def test_the_command_to_show_defaults_to_the_runtime_install_method(monkeypatch):
+    monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "registry")
+    assert install_info.command_prefix() == "uvx mdpipeline"
+    monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "uv")
+    assert install_info.command_prefix() == "mdpipeline"

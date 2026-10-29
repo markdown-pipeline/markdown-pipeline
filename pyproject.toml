@@ -1,8 +1,8 @@
 [project]
 name = "mdpipeline"
-version = "0.1.10"
+version = "0.1.11"
 description = "Local Markdown pipeline: project folders to a brain raw/ layer, with CLI, MCP and UI"
-readme = "README.md"
+readme = "docs/pypi-readme.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [

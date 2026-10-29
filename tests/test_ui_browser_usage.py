@@ -180,3 +180,11 @@ def test_no_horizontal_scroll_on_a_phone(browser, brain, where):
             assert overflow <= 0
     finally:
         ctx.close()
+
+
+def test_settings_names_the_uvx_command_for_a_uvx_or_registry_install(page, brain, monkeypatch):
+    monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "registry")
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        open_settings(page)
+        expect(page.locator("#usage-settings")).to_contain_text("uvx mdpipeline usage off")

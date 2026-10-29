@@ -22,6 +22,7 @@ from pathlib import Path
 from .brain import Brain, BrainError, ConfigReadError, find_brain, init_brain
 from .destinations import AmbiguousTarget, describe_destination
 from .config import NEW_PIPELINE_TARGET, Pipeline, Source, load_config, save_config
+from .install_info import command_prefix
 from .locking import BusyError
 from .naming import DEFAULT_NAME_POLICY, POLICY_NAMES
 from .removal import ConfirmationRequired, remove_pipeline, remove_source
@@ -144,6 +145,9 @@ def build_parser() -> argparse.ArgumentParser:
                     "Run `mdpipeline init` in the brain directory, add a pipeline, dry-run, then sync.",
         epilog="Exit codes: 0 ok, 1 runtime error, 2 validation/usage error, 3 blocked by the guard, 4 conflicts, 5 busy.")
     parser.add_argument("--brain", metavar="DIR", help="brain directory (default: the registered brain at or above the current directory)")
+    from .usage_events import INSTALL_METHOD
+
+    parser.add_argument("--install-method", choices=INSTALL_METHOD.values, help=argparse.SUPPRESS)      # MD-197: set by the MCP Registry entry (server.json), not typed by people
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
     p = sub.add_parser("init", help="choose the folder where your Markdown files go (the \"brain\")",
@@ -1482,13 +1486,18 @@ def cmd_log(args) -> int:
     return EXIT_OK
 
 
-USAGE_CARD = """\
-Help improve Markdown Pipeline.
-Share anonymous usage: which setup steps you complete, errors, counts and timings.
-Never your content, titles, file names, paths, queries or tokens.
-You can skip this: if you don't choose, nothing is shared. Change it any time with `mdpipeline usage on|off`."""
-USAGE_HINT = ("Anonymous usage data is off (you haven't chosen), so nothing is shared. To share it: mdpipeline usage on. "
-              "To see exactly what would be sent: mdpipeline usage status.")
+def usage_card(method: str | None = None) -> str:
+    """The first-run card text. The command is the one this install can run (``uvx mdpipeline`` for a uvx or Registry install; MD-197)."""
+    return ("Help improve Markdown Pipeline.\n"
+            "Share anonymous usage: which setup steps you complete, errors, counts and timings.\n"
+            "Never your content, titles, file names, paths, queries or tokens.\n"
+            f"You can skip this: if you don't choose, nothing is shared. Change it any time with `{command_prefix(method)} usage on|off`.")
+
+
+def usage_hint(method: str | None = None) -> str:
+    prefix = command_prefix(method)
+    return (f"Anonymous usage data is off (you haven't chosen), so nothing is shared. To share it: {prefix} usage on. "
+            f"To see exactly what would be sent: {prefix} usage status.")
 
 
 def needs_usage_notice(command: str) -> bool:
@@ -1507,7 +1516,7 @@ def first_run_usage_notice() -> None:
         if interactive() and stderr_visible():
             if store.notice_seen("cli_ask"):
                 return
-            err(USAGE_CARD)
+            err(usage_card())
             print("Share anonymous usage? [s]hare / [d]on't share / Enter to skip: ", end="", file=sys.stderr, flush=True)   # stderr: input() would print to stdout
             try:
                 answer = input().strip().lower()
@@ -1518,7 +1527,7 @@ def first_run_usage_notice() -> None:
             store.mark_notice_seen("cli_ask")
             return
         if not store.notice_seen("cli_hint"):
-            err(USAGE_HINT)
+            err(usage_hint())
             store.mark_notice_seen("cli_hint")
     except Exception:          # noqa: BLE001 - a notice must never stop the command the user asked for
         return
@@ -1634,8 +1643,8 @@ def cmd_usage(args) -> int:
         print(f"Anonymous usage data: {state}\n")
         print("What we send:\n" + "\n".join(f"  - {line}" for line in view["what_we_send"]))
         print("\nNever sent:\n" + "\n".join(f"  - {line}" for line in view["never_sent"]))
-        print(f"\n{view['always_sent']}\n\n{view['sent_on_purpose']}\n\nInstall ID: {view['install_id']}   (reset: mdpipeline usage reset-id)\n"
-              "Change any time: mdpipeline usage on | off")
+        print(f"\n{view['always_sent']}\n\n{view['sent_on_purpose']}\n\nInstall ID: {view['install_id']}   (reset: {command_prefix()} usage reset-id)\n"
+              f"Change any time: {command_prefix()} usage on | off")
     return EXIT_OK
 
 
@@ -1644,10 +1653,18 @@ def starts_usage_helper(command: str) -> bool:
     return command not in ("mcp", "ui", "usage", "background", "start", "uninstall", "install-note")
 
 
+def apply_install_method(args) -> None:
+    """MD-197: ``--install-method NAME`` (a fixed name; the Registry entry's server.json can fix an argument but not an environment variable) says
+    how this copy was installed, for this run and, through the mcp command, for the ``start`` that follows. Only the argument parser's fixed names get here."""
+    if getattr(args, "install_method", None):
+        os.environ["MDPIPELINE_INSTALL_METHOD"] = args.install_method
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     argv = sys.argv[1:] if argv is None else argv
     args = parser.parse_args(argv or ["start"])           # just `mdpipeline` opens the app
+    apply_install_method(args)
     try:
         return _main(args)
     finally:
@@ -1723,9 +1740,12 @@ def _main(args) -> int:
         if args.command == "state":
             return cmd_state(args)
         if args.command == "mcp":
-            from .mcp_server import serve
+            from .mcp_server import brain_provider, serve
 
-            serve(resolve_brain(args))
+            from .install_info import remember_registry_install
+
+            remember_registry_install()                # MD-197: the Registry entry's variable, kept for the `start` that follows
+            serve(brain_provider(args.brain))          # MD-196: no output folder yet is a working server in setup mode, not exit 2
             return EXIT_OK
         raise UsageError(f"Unknown command {args.command}")
     except ValidationFailed as exc:

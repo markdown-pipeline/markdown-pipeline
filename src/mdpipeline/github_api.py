@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import urllib.error
 import urllib.request
 from typing import Callable
@@ -49,17 +50,27 @@ def urllib_transport(method: str, url: str, headers: dict, body: bytes | None, *
         return exc.code, dict(exc.headers or {}), exc.read() or b""
 
 
+class _Rejected(Exception):
+    """Internal: GitHub answered 401 to this token (turned into the user-facing error, or a renewal and one retry, by ``request``)."""
+
+
 class GitHubApi:
     def __init__(self, token: "str | Callable[[], str]", *, api_url: str = DEFAULT_API_URL, allowed_hosts: tuple[str, ...] = ("api.github.com",),
-                 transport: Transport | None = None) -> None:
+                 transport: Transport | None = None, renew: "Callable[[str], str] | None" = None,
+                 still_rejected: "Callable[[], Exception] | None" = None) -> None:
         """``allowed_hosts`` is the whole network rule: the API URL must be https and its host must be listed
-        (the configuration lists a GitHub Enterprise host explicitly; nothing else is ever called)."""
+        (the configuration lists a GitHub Enterprise host explicitly; nothing else is ever called).
+
+        ``renew`` (MD-187, a sign-in credential only): called with the token GitHub rejected (401), it returns a renewed one. The request is then
+        retried once; if GitHub rejects the renewed token too, ``still_rejected()`` supplies the error. Without ``renew`` a 401 is final."""
         self._host = _allowed_host(api_url)
         if self._host not in allowed_hosts:
             raise ValueError(f"{self._host} is not a configured GitHub host")
         self.api_url = api_url.rstrip("/")
         self._token_source = token
         self._token_value: str | None = None
+        self._renew, self._still_rejected = renew, still_rejected
+        self._renew_lock = threading.Lock()
         host = self._host
         self._transport = transport or _override or (lambda m, u, h, b: urllib_transport(m, u, h, b, allowed_host=host))
 
@@ -75,12 +86,33 @@ class GitHubApi:
             self._token_value = self._token_source() if callable(self._token_source) else self._token_source
         return self._token_value
 
+    def _renewed_token(self, rejected: str) -> str:
+        """The token to retry with after GitHub rejected ``rejected``. Threads that were rejected together renew once: the later ones find the new token."""
+        with self._renew_lock:
+            if self._token_value is not None and self._token_value != rejected:
+                return self._token_value
+            self._token_value = self._renew(rejected)
+            return self._token_value
+
     def request(self, method: str, path: str, body: dict | None = None, query: dict | None = None, *, what: str = ""):
+        token = self._token()
+        try:
+            return self._request_with(token, method, path, body, query, what)
+        except _Rejected:
+            if self._renew is None:
+                raise self._error(401, {}, None, what, method, path) from None
+        token = self._renewed_token(token)                  # a 401 on a sign-in: renew once, then try this request again before any error
+        try:
+            return self._request_with(token, method, path, body, query, what)
+        except _Rejected:
+            raise (self._still_rejected() if self._still_rejected else self._error(401, {}, None, what, method, path)) from None
+
+    def _request_with(self, token: str, method: str, path: str, body: dict | None, query: dict | None, what: str):
         url = self.api_url + path + (("?" + urlencode(query)) if query else "")
         parts = urlsplit(url)
         if parts.scheme != "https" or parts.hostname != self._host:
             raise ValueError("refusing to call a host that is not the configured GitHub API host")
-        headers = {"Authorization": f"Bearer {self._token()}", "Accept": "application/vnd.github+json",
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
                    "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "mdpipeline"}
         data = json.dumps(body).encode() if body is not None else None
         if data is not None:
@@ -99,6 +131,8 @@ class GitHubApi:
                 payload = None
         if 200 <= status < 300:
             return payload
+        if status == 401:
+            raise _Rejected()
         raise self._error(status, resp_headers, payload, what, method, path)
 
     @staticmethod

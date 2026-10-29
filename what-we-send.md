@@ -23,7 +23,7 @@ you open the app. We do not build a profile of a person.
 |---|---|---|
 | You open the app | `app_opened` | whether it is the first time |
 | You open a new version | `app_updated` | the previous version |
-| You install | `install_completed` | your operating system and how you installed |
+| You install | `install_completed` | your operating system and how you installed: with the install script, with uv or uvx, with pipx, with pip, from the MCP Registry, or from the source |
 | You answer the usage question | `consent_decided` | that you chose "Share" |
 | You move through the first run | `onboarding_step_viewed`, `onboarding_step_completed`, `session_ended_before_first_sync`, `secret_store_used` | which step, and how long it took; at the where-files-go step, whether you chose a folder or GitHub and whether you changed the suggested folder (yes or no, never the path); whether your secrets are kept by the system keychain or, when there is none, in a file only your user can read (nothing you typed) |
 | Background sync starts | `background_started` | how it was started: at login, by the system service, by the app, or by hand; whether this computer has a desktop session (yes, no, or unknown); and whether Linux keeps your background sync running after you log out ("linger" is on, off, or unknown). The app only reads that setting and never changes it. Nothing else |
@@ -39,7 +39,7 @@ you open the app. We do not build a profile of a person.
 | Your first files are written | `first_sync_completed` | the kind of source, how many files (range) and how long it took |
 | A sync runs | `sync_completed`, `sync_failed` | what started it (you or the schedule), counts as ranges, duration, and an error class |
 | A sync waits for your OK | `guard_triggered`, `guard_resolved` | that it happened, and whether you approved or cancelled |
-| A notice appears | `notice_shown` | which kind (failed, stale...). For the one-line reminder that background sync stops when you log out of a Linux server: that it was shown, and on which screen (first-run Ready, Home, Settings or the command line), at most once a day per screen |
+| A notice appears | `notice_shown` | which kind (failed, stale...). When your agent starts the MCP server before the app is set up: that this happened, at most once each time the agent starts it. For the one-line reminder that background sync stops when you log out of a Linux server: that it was shown, and on which screen (first-run Ready, Home, Settings or the command line), at most once a day per screen |
 | You hide that reminder | `notice_hidden` | that you pressed Hide on Home. Nothing else |
 | You change the sync interval | `schedule_changed` | the old and the new interval |
 | You open Activity or the pipeline view | `activity_viewed`, `view_mode_opened` | where you came from |

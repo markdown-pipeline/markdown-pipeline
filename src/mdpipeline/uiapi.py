@@ -257,9 +257,10 @@ def usage_summary() -> dict:
 
 
 def usage_view() -> dict:
+    from .install_info import command_prefix
     from .usage import UsageStore
 
-    return UsageStore().view()
+    return {**UsageStore().view(), "command": command_prefix()}
 
 
 def set_usage_consent(choice: object) -> dict:

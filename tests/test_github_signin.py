@@ -203,17 +203,21 @@ def test_a_sync_commits_with_the_sign_in_token_and_the_token_is_only_in_the_vaul
         assert files_containing(secret, brain.root, app_data.dir) == [] and repo_containing(secret, fake) == []
 
 
-def test_a_token_that_expires_mid_sync_leaves_the_branch_unchanged_and_the_next_sync_converges(brain, fake, make_source):
+def test_a_token_that_expires_mid_sync_is_renewed_and_the_same_sync_completes(brain, fake, make_source):
+    secret_id = store(fake)
+    signin_pipeline(brain, make_source, secret_id)
+    fake.before("PATCH", fake.expire_access_tokens, times=1)         # expires right before the commit point (MD-187: renewed once, then retried)
+    res = sync_pipeline(brain, "p", trigger="cli")
+    assert res.result == "ok" and fake.read("raw/p/psrc/a.md")
+
+
+def test_a_sign_in_revoked_mid_sync_leaves_the_branch_unchanged_and_says_sign_in_again(brain, fake, make_source):
     secret_id = store(fake)
     signin_pipeline(brain, make_source, secret_id)
     head = fake.head()
-    fake.before("PATCH", fake.expire_access_tokens, times=1)         # expires right before the commit point
+    fake.before("PATCH", fake.revoke_tokens, times=1)                # the person revoked the app right before the commit point
     res = sync_pipeline(brain, "p", trigger="cli")
-    assert res.result == "error" and fake.head() == head and fake.read("raw/p/psrc/a.md") is None
-    tokens = gs.SignInTokens.from_json(vault_mod.default_vault().get(secret_id))
-    tokens.expires_at = 1.0                                          # the stored token is now known to be expired: next sync refreshes
-    vault_mod.default_vault().replace(secret_id, tokens.to_json())
-    assert sync_pipeline(brain, "p", trigger="cli").result == "ok" and fake.read("raw/p/psrc/a.md")
+    assert res.result == "error" and res.category == "sign-in-expired" and fake.head() == head and fake.read("raw/p/psrc/a.md") is None
 
 
 def test_a_revoked_sign_in_writes_and_deletes_nothing_and_says_sign_in_again(brain, fake, make_source):

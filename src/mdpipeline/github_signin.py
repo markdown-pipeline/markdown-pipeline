@@ -270,6 +270,22 @@ class SignInCredential:
         tokens = self._stored()
         if not tokens.needs_refresh():
             return tokens.access_token
+        return self._refresh(tokens)
+
+    def renew(self, rejected: str) -> str:
+        """MD-187: GitHub answered 401 to ``rejected``, so whatever the stored expiry says, that token is dead. Another process may have renewed
+        already (use its result); otherwise refresh now. A refusal raises :class:`SignInAgain` and changes nothing."""
+        stored = self._stored()
+        if stored.access_token != rejected and not stored.needs_refresh():
+            return stored.access_token
+        return self._refresh(stored)
+
+    @staticmethod
+    def still_rejected() -> SignInAgain:
+        """The error when GitHub rejects a token that was just renewed: signing in again is the only way out."""
+        return SignInAgain("GitHub did not accept your sign-in even after it was renewed. Sign in again (nothing was written or deleted).")
+
+    def _refresh(self, tokens: SignInTokens) -> str:
         client_id = self.client_id or app_settings()["client_id"]
         if not client_id:
             raise SignInAgain("Your GitHub sign-in expired and this app does not know its GitHub App. Sign in again.")

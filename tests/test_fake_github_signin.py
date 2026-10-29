@@ -172,3 +172,15 @@ def test_authorize_device_waits_for_a_device_code_that_is_still_being_requested(
 def test_authorize_device_with_no_code_ever_requested_fails_with_a_clear_message(fake):
     with pytest.raises(AssertionError, match="device code"):
         fake.authorize_device(timeout=0.2)
+
+
+def test_with_a_clock_the_access_token_stops_working_after_its_ttl_and_a_refreshed_one_works_again(fake):
+    now = [1000.0]
+    fake.clock = lambda: now[0]
+    tokens = signed_in(fake)
+    now[0] += fake.access_ttl - 1
+    assert api(fake, "GET", "/user", tokens["access_token"])[0] == 200
+    now[0] += 2
+    assert api(fake, "GET", "/user", tokens["access_token"])[0] == 401
+    fresh = login(fake, "/login/oauth/access_token", client_id=CLIENT_ID, grant_type="refresh_token", refresh_token=tokens["refresh_token"])[1]
+    assert api(fake, "GET", "/user", fresh["access_token"])[0] == 200

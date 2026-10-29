@@ -43,8 +43,19 @@ def record_install_method(method: str) -> bool:
     return True
 
 
+def remember_registry_install() -> bool:
+    """MD-197: the MCP Registry's entry starts the server with ``MDPIPELINE_INSTALL_METHOD=registry`` (set in server.json). Remember it, so the
+    ``start`` the person runs next (without that variable) still reports ``registry``. An existing marker is never overwritten. Never raises."""
+    try:
+        if os.environ.get("MDPIPELINE_INSTALL_METHOD") != "registry" or (data_dir() / MARKER).exists():
+            return False
+        return record_install_method("registry")
+    except OSError:
+        return False
+
+
 def install_method(*, prefix: str | None = None, source_checkout: bool | None = None) -> str:
-    """One of the fixed install methods (``script``, ``uv``, ``pipx``, ``pip``, ``source``, ``other``)."""
+    """One of the fixed install methods (``script``, ``uv``, ``uvx``, ``registry``, ``pipx``, ``pip``, ``source``, ``other``)."""
     said = os.environ.get("MDPIPELINE_INSTALL_METHOD", "")
     if said in INSTALL_METHOD.values:
         return said
@@ -57,8 +68,15 @@ def install_method(*, prefix: str | None = None, source_checkout: bool | None = 
     prefix = (prefix if prefix is not None else sys.prefix).replace("\\", "/")
     if "/uv/tools/" in prefix + "/":
         return "uv"
+    if "/archive-v0/" in prefix + "/":          # MD-197: `uvx` / `uv tool run` run from an ephemeral environment in uv's cache
+        return "uvx"
     if "/pipx/venvs/" in prefix + "/":
         return "pipx"
     if source_checkout if source_checkout is not None else _is_source_checkout():
         return "source"
     return "pip"
+
+
+def command_prefix(method: str | None = None) -> str:
+    """The command to show a person (MD-196/197): a ``uvx`` or Registry user has no ``mdpipeline`` on PATH, so they are shown ``uvx mdpipeline``."""
+    return "uvx mdpipeline" if (method or install_method()) in ("uvx", "registry") else "mdpipeline"

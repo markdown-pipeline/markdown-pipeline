@@ -1636,7 +1636,7 @@ function renderSettings() {
       <div class="tablewrap"><table id="usage-log"><thead><tr><th>Time</th><th>Event</th><th>Properties (exactly as sent)</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="3" class="muted">${esc(empty)}</td></tr>`}</tbody></table></div>
       <p class="small">Install ID <code>${esc(u.install_id)}</code> <button class="btn sm" data-act="usage-reset">Reset</button>
-        <span class="muted"> · In a terminal: <code>${CLI} usage off</code></span></p>
+        <span class="muted"> · In a terminal: <code>${esc(u.command || CLI)} usage off</code></span></p>
     </section>`;
 }
 

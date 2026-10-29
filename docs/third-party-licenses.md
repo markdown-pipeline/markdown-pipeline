@@ -52,3 +52,4 @@ No dependency below is under a copyleft license (GPL, LGPL, AGPL). `cryptography
 | pyee | 13.0.1 | MIT |
 | pygments | 2.21.0 | BSD-2-Clause |
 | pytest | 9.1.1 | MIT |
+| pytest-rerunfailures | 16.7 | MPL-2.0 |

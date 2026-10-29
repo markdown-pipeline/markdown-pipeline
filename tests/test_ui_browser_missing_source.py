@@ -52,8 +52,9 @@ def test_choose_new_location_refuses_a_bad_path_then_saves_a_good_one_and_shows_
         page.locator("input[data-msrc-path]").fill(str(moved))
         page.get_by_role("button", name="Use this folder").click()
         expect(page.locator("#toast")).to_contain_text("new location saved")
-        expect(page.locator('[data-need="source_missing"]')).to_have_count(0)
-        expect(page.locator("#planned-at")).to_be_visible()
+        # the notice clears when the next-sync dry run has been made; on a slow CI runner that takes longer than the default 5 s (public CI, 2026-10-29)
+        expect(page.locator('[data-need="source_missing"]')).to_have_count(0, timeout=30000)
+        expect(page.locator("#planned-at")).to_be_visible(timeout=30000)
     assert load_config(brain).get("p").sources[0].path == str(moved)
 
 

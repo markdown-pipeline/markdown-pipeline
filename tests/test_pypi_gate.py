@@ -154,9 +154,11 @@ def load():
 
 
 @needs_workflow
-def test_the_workflow_runs_on_a_published_release_and_by_hand():
+def test_the_workflow_runs_on_a_published_release_and_by_hand_with_a_tag():
     on = load()[True]
-    assert on["release"]["types"] == ["published"] and "workflow_dispatch" in on
+    assert on["release"]["types"] == ["published"]
+    inputs = on["workflow_dispatch"]["inputs"]
+    assert inputs["tag"]["required"] is True and inputs["publish"]["type"] == "boolean" and inputs["publish"]["default"] is False
 
 
 @needs_workflow
@@ -183,8 +185,30 @@ def test_the_workflow_uses_trusted_publishing_and_holds_no_token():
 
 
 @needs_workflow
-def test_a_manual_run_never_publishes():
-    assert "workflow_dispatch" not in load()["jobs"]["publish"]["if"] and "github.event_name == 'release'" in load()["jobs"]["publish"]["if"]
+def test_a_manual_run_publishes_only_when_asked_to_and_always_through_the_pypi_environment():
+    publish = load()["jobs"]["publish"]
+    assert publish["if"] == "github.event_name == 'release' || inputs.publish" and publish["environment"] == "pypi"
+
+
+@needs_workflow
+def test_every_job_that_builds_or_tests_checks_out_the_tag_not_the_current_branch():
+    for name in ("tests", "build"):
+        checkout = next(s for s in load()["jobs"][name]["steps"] if str(s.get("uses", "")).startswith("actions/checkout"))
+        assert checkout["with"]["ref"] == "${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}", name
+
+
+@needs_workflow
+def test_the_gate_must_see_the_tag_as_the_version_and_the_tag_is_never_pasted_into_a_script():
+    step = next(s for s in load()["jobs"]["build"]["steps"] if "pypi_gate.py" in s.get("run", ""))
+    assert step["env"]["TAG"] == "${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}"
+    assert '--version "$TAG"' in step["run"] and "${{" not in step["run"]           # a tag name is data: through env, never interpolated into shell
+    assert 'pyproject.toml' not in step["run"]                                       # no fallback to whatever version the checkout holds
+
+
+@needs_workflow
+def test_a_tag_that_is_not_a_plain_version_tag_stops_the_build_before_anything_runs():
+    step = next(s for s in load()["jobs"]["build"]["steps"] if "TAG" in s.get("env", {}) and "^v[0-9]" in s.get("run", ""))
+    assert load()["jobs"]["build"]["steps"].index(step) == 0 and "exit 1" in step["run"]
 
 
 @needs_workflow

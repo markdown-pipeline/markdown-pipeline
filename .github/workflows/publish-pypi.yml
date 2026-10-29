@@ -1,0 +1,90 @@
+# MD-198: publish a release to PyPI as `mdpipeline`, only behind the gate. Trusted Publishing (OIDC): there is no token anywhere.
+# A GitHub release being published starts it. A manual run names a TAG (v0.1.11) and builds and tests exactly that tag, not the current branch;
+# it publishes only when `publish` is ticked. Every path that publishes waits for the owner's approval in the `pypi` environment.
+# NOTE: the `pypi` environment allows deployments from tags `v*` only, so a manual publish must be started on a tag that contains this file.
+name: publish-pypi
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to build, test and (if asked) publish, e.g. v0.1.11"
+        required: true
+        type: string
+      publish:
+        description: "Publish to PyPI (the owner still has to approve in the pypi environment)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: The tag is a plain version tag
+        env:
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: |
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a version tag: $TAG"; exit 1;; esac
+          printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "not a version tag"; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run pytest -rsfE
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: The tag is a plain version tag
+        env:
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: |
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a version tag: $TAG"; exit 1;; esac
+          printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "not a version tag"; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build --out-dir dist
+      - name: Gate (version, license, author address, secrets)
+        env:
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: python3 scripts/pypi_gate.py dist --version "$TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+  clean-install:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: uvx --help from the built wheel, in a clean container
+        run: |
+          docker run --rm -v "$PWD/dist:/dist:ro" ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+            sh -c 'uvx --from /dist/mdpipeline-*.whl mdpipeline --help'
+  publish:
+    needs: [tests, build, clean-install]
+    if: github.event_name == 'release' || inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: astral-sh/setup-uv@v5
+      - run: uv publish --trusted-publishing always dist/*

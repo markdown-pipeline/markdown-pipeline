@@ -3,7 +3,7 @@
     uv run python scripts/sync_public.py PUBLIC_CLONE            # show what would change (changes nothing)
     uv run python scripts/sync_public.py PUBLIC_CLONE --apply    # copy and delete files in the clone; you then review, commit and push it
 
-The public tree is every file tracked here, except the workflows that must not be public yet (the Windows runner, and the publish workflows until
+The public tree is every file tracked here, except the workflows that must not be public yet (the Windows runner, and the Registry publish workflow until
 product says so), plus the three root copies the public README links to (install.sh, usage-events.md, what-we-send.md). Nothing is committed or pushed here.
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 APP = Path(__file__).resolve().parent.parent
-WITHHELD = {".github/workflows/windows-tests.yml", ".github/workflows/publish-pypi.yml", ".github/workflows/publish-registry.yml"}
+WITHHELD = {".github/workflows/windows-tests.yml", ".github/workflows/publish-registry.yml"}       # publish-pypi.yml went public 2026-10-29 (owner steps done)
 ROOT_COPIES = {"install.sh": "scripts/install.sh", "usage-events.md": "docs/usage-events.md", "what-we-send.md": "docs/what-we-send.md"}     # public path -> source
 
 

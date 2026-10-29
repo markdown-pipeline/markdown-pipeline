@@ -1,6 +1,6 @@
 [project]
 name = "mdpipeline"
-version = "0.1.13"
+version = "0.1.14"
 description = "Local Markdown pipeline: project folders to a brain raw/ layer, with CLI, MCP and UI"
 readme = "docs/pypi-readme.md"
 license = "Apache-2.0"
@@ -26,7 +26,6 @@ build-backend = "uv_build"
 dev = [
     "playwright==1.60.0",
     "pytest>=9.1.1",
-    "pytest-rerunfailures>=14",
 ]
 
 [tool.pytest.ini_options]

@@ -1,6 +1,8 @@
 """The Activity screen: 'Needs you' (errors, guard approvals, conflicts) and the run history."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from .brain import Brain
 from .config import load_config
 from .engine import sync_pipeline
@@ -18,6 +20,20 @@ def _counts_text(counts: dict) -> str:
     return ", ".join(parts) if parts else "no changes"
 
 
+def _folder_exists_now(source) -> bool:
+    return Path(source.path).expanduser().is_dir()
+
+
+def _resolved_missing(s: dict, config) -> set[str]:
+    """Labels whose last run said "folder not found" but whose folder exists now (the person chose a new location since; the next sync confirms it).
+    The notice must not outlive the missing folder (MD-198 finding, 2026-10-29: it showed the NEW, existing path as "not found")."""
+    pipeline = config.get(s["name"])
+    kinds = {src.label: src for src in pipeline.sources} if pipeline else {}
+    return {e["source"] for e in s["last_run"].get("errors", [])
+            if "path" not in e and e.get("category") == "source-missing" and kinds.get(e["source"]) is not None and kinds[e["source"]].type == "folder"
+            and _folder_exists_now(kinds[e["source"]])}
+
+
 def _missing_source_cards(brain: Brain, s: dict, config) -> list[dict]:
     """MD-136: one calm card per local folder that was not found. Nothing is at risk (files are never removed for it), so it is not an error."""
     from .state import State
@@ -27,7 +43,8 @@ def _missing_source_cards(brain: Brain, s: dict, config) -> list[dict]:
     pipeline = config.get(s["name"])
     kinds = {src.label: src for src in pipeline.sources} if pipeline else {}
     wanted = [e for e in last.get("errors", [])
-              if "path" not in e and kinds.get(e["source"]) is not None and kinds[e["source"]].type == "folder" and e.get("category") == "source-missing"]
+              if "path" not in e and kinds.get(e["source"]) is not None and kinds[e["source"]].type == "folder" and e.get("category") == "source-missing"
+              and not _folder_exists_now(kinds[e["source"]])]
     if not wanted:
         return []
     ps = State.load(bind_target(brain, pipeline)).pipelines.get(s["name"])
@@ -45,10 +62,11 @@ FILE_ERRORS_NEXT_STEP = ("Fix them at the source and press Sync now to retry. If
 def _error_cards(brain: Brain, s: dict, config) -> list[dict]:
     """The calm missing-folder cards, plus the red error card only when something else really failed."""
     cards = _missing_source_cards(brain, s, config)
-    missing = {c["label"] for c in cards}
+    resolved = _resolved_missing(s, config)
+    missing = {c["label"] for c in cards} | resolved
     last = s["last_run"]
     others = [e for e in last.get("errors", []) if "path" in e or e["source"] not in missing]
-    if cards and not others:
+    if (cards or resolved) and not others:
         return cards
     return cards + [_error_card(brain, s, config, skip=missing)]
 

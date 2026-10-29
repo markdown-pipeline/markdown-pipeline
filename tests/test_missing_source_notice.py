@@ -167,3 +167,34 @@ def test_a_healthy_pipeline_is_not_needs_you(brain, two):
     row, view, hist = _row_and_view(brain)
     assert row["needs_you"] is False and view["needs_you"] is False
     assert all(h.get("needs_you") is False for h in hist if h["kind"] == "run")
+
+
+# --- MD-198 finding (2026-10-29): the notice must not outlive the missing folder ---------------------------------------------------------------------
+def test_after_choosing_a_new_existing_folder_the_old_notice_is_gone_and_no_red_card_replaces_it(brain, two, tmp_path):
+    """The last run still says "folder not found" until the next sync, but the person has since pointed the source at a folder that exists. The card
+    (it showed the NEW path as "not found") and the pipeline's needs-you state must go at once; only the next sync's result is waited for."""
+    a, _ = two
+    shutil.rmtree(a)
+    sync_pipeline(brain, "p")
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    (moved / "a1.md").write_text("# a1\n")
+    with running_ui(brain) as ui:
+        assert [n["kind"] for n in ui.get("/api/pipelines/p/view")[1]["needs_you"]] == ["source_missing"]
+        assert ui.post("/api/pipelines/p/source-path", {"label": "A", "path": str(moved)})[0] == 200
+        view = ui.get("/api/pipelines/p/view")[1]
+    assert view["needs_you"] == []
+    assert [n["kind"] for n in activity_view(brain)["needs_you"]] == []
+
+
+def test_a_source_that_is_still_missing_keeps_its_notice_when_another_one_was_fixed(brain, two, tmp_path):
+    a, b = two
+    shutil.rmtree(a)
+    shutil.rmtree(b)
+    sync_pipeline(brain, "p")
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    with running_ui(brain) as ui:
+        assert ui.post("/api/pipelines/p/source-path", {"label": "A", "path": str(moved)})[0] == 200
+        needs = ui.get("/api/pipelines/p/view")[1]["needs_you"]
+    assert [(n["kind"], n["label"]) for n in needs] == [("source_missing", "B")]

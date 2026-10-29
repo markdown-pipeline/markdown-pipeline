@@ -35,7 +35,6 @@ def test_view_mode_shows_a_calm_notice_and_no_red_error(page, brain, gone):
         shot(page, "md136-view-calm")
 
 
-@pytest.mark.flaky(reruns=2, reason="MD-198: about half of the CI runs leave the 'Source folder not found' card on screen after the new folder is saved (never locally); cause not found, product accepted a bounded rerun on 2026-10-29")
 def test_choose_new_location_refuses_a_bad_path_then_saves_a_good_one_and_shows_the_plan(page, brain, gone, tmp_path):
     moved = tmp_path / "moved"
     moved.mkdir()
@@ -54,17 +53,9 @@ def test_choose_new_location_refuses_a_bad_path_then_saves_a_good_one_and_shows_
         page.get_by_role("button", name="Use this folder").click()
         expect(page.locator("#toast")).to_contain_text("new location saved")
         # the notice clears when the next-sync dry run has been made; on a slow CI runner that takes longer than the default 5 s (public CI, 2026-10-29)
-        try:
-            expect(page.locator('[data-need="source_missing"]')).to_have_count(0, timeout=30000)
-        except AssertionError:
-            # MD-198: what the page and the server say when the card stays (read in the CI log; the cause is not known yet)
-            state = page.evaluate("JSON.stringify({screen: S.screen, hash: location.hash, msrc: S.msrc, busy: S.busy, version: S.version, "
-                                  "needs: S.view && S.view.data && S.view.data.needs_you && S.view.data.needs_you.map(n => n.kind + ':' + n.path), "
-                                  "viewName: S.view && S.view.name, planProblems: S.view && S.view.plan && S.view.plan.problems && S.view.plan.problems.map(p => p.kind), "
-                                  "toast: document.querySelector('#toast') && document.querySelector('#toast').innerText})")
-            server = ui.get("/api/pipelines/p/view")[1]["needs_you"]
-            raise AssertionError(f"card stayed. page={state} server_needs={[(n['kind'], n.get('path')) for n in server]} moved={moved}")
-        expect(page.locator("#planned-at")).to_be_visible(timeout=30000)
+        # the server drops the notice as soon as the new folder exists (MD-198 finding); before that fix this passed only by catching the page's loading moment
+        expect(page.locator('[data-need="source_missing"]')).to_have_count(0)
+        expect(page.locator("#planned-at")).to_be_visible()
     assert load_config(brain).get("p").sources[0].path == str(moved)
 
 

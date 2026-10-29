@@ -35,6 +35,7 @@ def test_view_mode_shows_a_calm_notice_and_no_red_error(page, brain, gone):
         shot(page, "md136-view-calm")
 
 
+@pytest.mark.flaky(reruns=2, reason="MD-198: about half of the CI runs leave the 'Source folder not found' card on screen after the new folder is saved (never locally); cause not found, product accepted a bounded rerun on 2026-10-29")
 def test_choose_new_location_refuses_a_bad_path_then_saves_a_good_one_and_shows_the_plan(page, brain, gone, tmp_path):
     moved = tmp_path / "moved"
     moved.mkdir()

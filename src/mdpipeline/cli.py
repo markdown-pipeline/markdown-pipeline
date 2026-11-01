@@ -480,7 +480,7 @@ def optional_brain(args) -> Brain | None:
 
 def cmd_vault(args) -> int:
     from . import vault as vault_mod
-    from .vault import VaultError, secret_users
+    from .vault import VaultError
 
     action = args.vault_command
     if action in ("add", "replace"):
@@ -524,14 +524,14 @@ def cmd_vault(args) -> int:
     brain = optional_brain(args)
     if action == "remove":
         try:
-            with_vault(lambda: vault_mod.remove_secret(brain, args.id) if brain else vault_mod.default_vault().remove(args.id))
+            with_vault(lambda: vault_mod.remove_secret(brain, args.id))
         except VaultError as exc:
             if isinstance(exc, vault_mod.VaultLocked):
                 raise
             raise UsageError(str(exc)) from None
         print(f"Removed {args.id}.")
         return EXIT_OK
-    rows = [{**vars(i), "used_by": secret_users(brain, i.id) if brain else []} for i in with_vault(lambda: vault_mod.default_vault().list())]
+    rows = [{**vars(i), "used_by": vault_mod.secret_users_all(brain, i.id)} for i in with_vault(lambda: vault_mod.default_vault().list())]
     if args.json:
         print(json.dumps(rows, indent=2))
         return EXIT_OK
@@ -811,10 +811,9 @@ def cmd_pipeline_sign(args, brain: Brain, signing_in: bool) -> int:
             save_config(brain, config)
         print(f"Signed in as {tokens.login}. Pipeline '{args.name}' will use this sign-in from now on.")
         return EXIT_OK
-    others = [p for p in config.pipelines if p.name != args.name and p.destination and p.destination.get("credential") == ref]
     dest["credential"] = ""
     save_config(brain, config)
-    if ref.startswith("vault:") and not others:
+    if ref.startswith("vault:") and not vault_mod.secret_in_use(brain, ref[len("vault:"):]):         # MD-192: any brain, not only this one
         with_vault(lambda: vault_mod.default_vault().remove(ref[len("vault:"):]))
     print(f"Signed out: the sign-in was removed from the vault and pipeline '{args.name}' no longer has a credential (its syncs stop until you sign in again).\n"
           "The app cannot revoke its access at GitHub without a client secret: to revoke it, open https://github.com/settings/applications "
@@ -864,8 +863,8 @@ def edit_target_settings(args, edited: Pipeline) -> None:
     if args.remove_token:
         ref = edited.destination.get("credential", "")
         edited.destination["credential"] = ""
-        others = [p for p in load_config(find_brain(args.brain or os.getcwd())).pipelines if p.name != edited.name and p.destination and p.destination.get("credential") == ref]
-        if ref.startswith("vault:") and not others:
+        in_use = vault_mod.secret_in_use(find_brain(args.brain or os.getcwd()), ref[len("vault:"):], excluding=edited.name) if ref.startswith("vault:") else False
+        if ref.startswith("vault:") and not in_use:
             with_vault(lambda: vault_mod.default_vault().remove(ref[len("vault:"):]))
 
 

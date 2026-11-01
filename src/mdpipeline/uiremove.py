@@ -1,7 +1,7 @@
 """MD-134: remove a pipeline from the UI. The same removal as ``mdpipeline pipeline remove`` (removal.remove_pipeline): the files are kept by
 default (they become unowned), or the unedited files the pipeline created are deleted after a confirmation that names the exact count.
 
-Credentials: a secret the pipeline referred to leaves the vault only when no other pipeline uses it, and the answer says which is which
+Credentials: a secret the pipeline referred to leaves the vault only when no other pipeline (in any of your brains) uses it, and the answer says which is which
 (names only, never a value). A locked vault never blocks a removal: its secrets simply stay where they are."""
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ def _secret_ids(pipeline) -> list[str]:
 
 def _credential_plan(brain: Brain, pipeline) -> dict:
     """Which of the pipeline's secrets would be removed from the vault and which stay because another pipeline uses them."""
-    others = [p for p in load_config(brain).pipelines if p.name != pipeline.name]
     removed, kept = [], []
     try:
         names = {i.id: i.name for i in vault_mod.default_vault().list()}
@@ -32,7 +31,10 @@ def _credential_plan(brain: Brain, pipeline) -> dict:
     for secret_id in _secret_ids(pipeline):
         if secret_id not in names:
             continue
-        users = [p.name for p in others if f"vault:{secret_id}" in vault_mod._refs(p)]
+        try:
+            users = vault_mod.secret_users_all(brain, secret_id, strict=True, excluding=pipeline.name)      # MD-192: the other brains' pipelines count too
+        except vault_mod.UnreadableBrainError as exc:                                                         # the only way the strict check fails; it knows the name
+            users = [f'brain "{exc.brain_name}" (configuration can\'t be read)']                              # unknown counts as used: nothing is deleted
         if users:
             kept.append({"name": names[secret_id], "used_by": users})
         else:

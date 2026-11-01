@@ -142,7 +142,7 @@ def remove_pipeline_token(brain: Brain, name: str) -> dict:
         config.get(name).destination["credential"] = ""
         save_config(brain, config)
         brain._cache.clear()
-        if ref.startswith("vault:") and not vault_mod.secret_users(brain, ref[len("vault:"):]):
+        if ref.startswith("vault:") and not vault_mod.secret_in_use(brain, ref[len("vault:"):]):   # MD-192: any brain
             vault_mod.default_vault().remove(ref[len("vault:"):])
     return {"saved": True}
 
@@ -155,7 +155,7 @@ def vault_view(brain: Brain) -> dict:
     except vault_mod.VaultUnsafe as exc:
         return {"path": str(vault.path), "exists": True, "protection": "file", "locked": False, "unsafe": True, "message": str(exc), "secrets": []}
     try:
-        secrets = [{**vars(i), "used_by": vault_mod.secret_users(brain, i.id)} for i in vault.list()]
+        secrets = [{**vars(i), "used_by": vault_mod.secret_users_all(brain, i.id)} for i in vault.list()]
         return {**info, "locked": False, "secrets": secrets}
     except vault_mod.VaultLocked as exc:
         return {**info, "locked": True, "needs_passphrase": exc.needs_passphrase, "message": str(exc), "secrets": []}

@@ -17,3 +17,15 @@ def test_glama_json_has_the_schema_and_the_maintainer():
 def test_glama_json_is_a_tracked_file_not_an_ignored_one():
     ignored = subprocess.run(["git", "check-ignore", "-q", "glama.json"], cwd=APP).returncode == 0
     assert not ignored
+
+
+def test_the_public_tree_plan_includes_glama_json_at_its_root():
+    """MD-203 AC2: the plan the release sync makes for the REAL source (not a fake tree) carries glama.json to the root of the public repo."""
+    import sys
+
+    sys.path.insert(0, str(APP / "scripts"))
+    try:
+        import sync_public
+    finally:
+        sys.path.pop(0)
+    assert sync_public.wanted(APP).get("glama.json") == "glama.json"

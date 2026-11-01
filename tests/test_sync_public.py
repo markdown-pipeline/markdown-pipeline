@@ -35,11 +35,12 @@ def trees(tmp_path):
     return private, public
 
 
-def test_the_public_tree_gets_every_tracked_file_except_the_withheld_workflows(trees):
+def test_the_public_tree_gets_every_tracked_file_except_the_windows_workflow(trees):
     private, public = trees
     sync.apply(public, private)
     assert (public / "src/a.py").read_text() == "A" and (public / "glama.json").exists() and (public / ".github/workflows/linux-tests.yml").exists()
-    assert not (public / ".github/workflows/windows-tests.yml").exists() and not (public / ".github/workflows/publish-registry.yml").exists()
+    assert not (public / ".github/workflows/windows-tests.yml").exists()
+    assert (public / ".github/workflows/publish-registry.yml").read_text() == "y"      # MD-199: public with v0.1.15, product's go 11172
 
 
 def test_the_three_root_copies_are_made(trees):

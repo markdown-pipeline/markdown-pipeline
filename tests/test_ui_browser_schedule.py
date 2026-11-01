@@ -202,6 +202,7 @@ def test_on_a_phone_the_interval_choice_sits_under_the_row_not_in_the_narrow_col
     page.set_viewport_size({"width": 390, "height": 800})
     with running_ui(one) as ui:
         open_app(page, ui)
+        page.locator('select[data-schedule="acme"]').wait_for(timeout=10000)      # a loaded runner drew the row after open_app returned (bounding_box was None)
         row = page.locator('[data-pipeline="acme"]').bounding_box()
         sel = page.locator('select[data-schedule="acme"]').bounding_box()
         assert sel["x"] >= row["x"] and sel["x"] + sel["width"] <= row["x"] + row["width"] + 1

@@ -10,6 +10,14 @@ from pathlib import Path
 
 PKG = Path(__file__).parent.parent / "src" / "mdpipeline"
 WORD = re.compile(r"\bbrains?\b|brain-|-brain", re.I)
+# MD-192 (product decision 2026-10-30, owner confirmed): the wording marketing approved in MM-155 says "brain", because the CLI says `--brain` and the
+# vault check is shared by the CLI and the UI. Exactly these strings are allowed; any other new "brain" string still fails. Each entry must still exist.
+APPROVED_BRAIN_STRINGS = {
+    ("vault.py", "' may be used by the brain '"),
+    ("vault.py", "', but that brain's configuration can't be read, so we couldn't check. Nothing was removed. Fix that brain's configuration, then try again."),
+    ("vault.py", ' (in brain "'),
+    ("uiremove.py", 'brain "'),
+}
 NOT_UI = {"cli.py", "brain.py", "mcp_server.py", "brainquery.py", "snippets.py", "log.py"}
 
 
@@ -23,7 +31,7 @@ def python_prose():
                       and isinstance(n.body[0], ast.Expr) and isinstance(getattr(n.body[0], "value", None), ast.Constant)}
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
-                if WORD.search(node.value) and " " in node.value.strip():
+                if WORD.search(node.value) and " " in node.value.strip() and (path.name, node.value) not in APPROVED_BRAIN_STRINGS:
                     yield f"{path.name}:{node.lineno}: {node.value[:90]!r}"
 
 
@@ -56,3 +64,12 @@ def test_no_visible_label_in_the_page_is_just_the_word_brain():
             if re.search(r">\s*brains?\s*<", line, re.I):
                 found.append(f"{path.name}:{number}: {line.strip()[:100]}")
     assert found == []
+
+
+def test_every_approved_brain_string_still_exists_so_the_allowlist_cannot_go_stale():
+    present = set()
+    for path in sorted(PKG.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                present.add((path.name, node.value))
+    assert APPROVED_BRAIN_STRINGS - present == set()

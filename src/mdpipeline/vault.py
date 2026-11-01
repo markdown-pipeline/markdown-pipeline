@@ -47,6 +47,15 @@ class VaultError(Exception):
     """The vault cannot do what was asked (message is user-facing and never contains a secret)."""
 
 
+class UnreadableBrainError(VaultError):
+    """Another brain's configuration can't be read, so whether it uses a secret is unknown (MD-192). ``brain_name`` is that brain's folder name."""
+
+    def __init__(self, secret_id: str, brain_name: str) -> None:
+        self.brain_name = brain_name
+        super().__init__(f"The secret '{secret_id}' may be used by the brain '{brain_name}', but that brain's configuration can't be read, so we couldn't check. "
+                         "Nothing was removed. Fix that brain's configuration, then try again.")
+
+
 class VaultUnsafe(VaultError, TargetError):
     """The secrets file (or its directory) is readable by other users or not owned by this user. Nothing was read, written or changed."""
 
@@ -412,9 +421,62 @@ def secret_users(brain, secret_id: str) -> list[str]:
     return [p.name for p in load_config(brain).pipelines if f"vault:{secret_id}" in _refs(p)]
 
 
+def _brains_to_check(brain) -> list:
+    """The brain the person named (if any) first, then every other brain the app knows (the ones that have synced and so are registered with the
+    background scheduler) whose configuration file still exists. One vault is shared by all brains, so a secret's users are in all of them (MD-192)."""
+    from pathlib import Path
+
+    from .brain import CONFIG_DIR_NAME, CONFIG_FILE_NAME, Brain
+    from .schedulestore import SchedulerStore
+
+    try:
+        registered = SchedulerStore().read()["brains"]
+    except OSError:
+        registered = []
+    found, seen = ([brain] if brain is not None else []), {str(Path(brain.root).resolve())} if brain is not None else set()
+    for path in registered:
+        root = Path(path)
+        if str(root.resolve()) in seen or not (root / CONFIG_DIR_NAME / CONFIG_FILE_NAME).is_file():
+            continue
+        seen.add(str(root.resolve()))
+        found.append(Brain(root))
+    return found
+
+
+def secret_users_all(brain, secret_id: str, *, strict: bool = False, excluding: str | None = None) -> list[str]:
+    """Who uses ``vault:<secret_id>``, in every brain the app knows: ``name`` for a pipeline of ``brain`` (the one named, may be ``None``), and
+    ``name (in brain "FOLDER")`` for a pipeline of another brain (MD-192). A brain that is gone is skipped. A brain whose configuration cannot be read is
+    skipped for display, but with ``strict`` (before anything is deleted) it stops the check: a secret that might be in use is never removed.
+    ``excluding``: a pipeline of ``brain`` that is being detached or removed right now and so does not count."""
+    from .brain import BrainError, ConfigReadError
+    from .config import load_config
+
+    ref, users = f"vault:{secret_id}", []
+    for i, other in enumerate(_brains_to_check(brain)):
+        current = brain is not None and i == 0
+        try:
+            pipelines = load_config(other).pipelines
+        except (ConfigReadError, BrainError, OSError):
+            if current:
+                raise
+            if strict:
+                raise UnreadableBrainError(secret_id, other.root.name) from None
+            continue
+        users += [p.name if current else f'{p.name} (in brain "{other.root.name}")' for p in pipelines if ref in _refs(p) and not (current and p.name == excluding)]
+    return users
+
+
+def secret_in_use(brain, secret_id: str, *, excluding: str | None = None) -> bool:
+    """For every path that deletes a secret once a pipeline no longer uses it: is it still used anywhere, or is that unknown? (unknown counts as used)"""
+    try:
+        return bool(secret_users_all(brain, secret_id, strict=True, excluding=excluding))
+    except VaultError:
+        return True
+
+
 def remove_secret(brain, secret_id: str, vault: Vault | None = None) -> None:
-    """Remove a secret from the vault. Refused, with the pipelines named, while one still uses it."""
-    users = secret_users(brain, secret_id)
+    """Remove a secret from the vault. Refused, with the pipelines (and the other brains) named, while one still uses it. ``brain`` may be ``None``."""
+    users = secret_users_all(brain, secret_id, strict=True)
     if users:
         raise VaultError(f"The secret '{secret_id}' is still used by: {', '.join(users)}. Change or remove their target settings first. Nothing was removed.")
     (vault or default_vault()).remove(secret_id)

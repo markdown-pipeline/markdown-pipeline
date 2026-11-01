@@ -6,6 +6,7 @@ APP="$(cd "$(dirname "$0")/.." && pwd)"; IMAGE="${1:-mdp-ea-test:latest}"; W="$(
 (cd "$APP" && uv build --wheel -o "$W" >/dev/null 2>&1)
 cat > "$W/inner.sh" <<'INNER'
 export PATH=$HOME/.local/bin:$PATH MDPIPELINE_POSTHOG_KEY="" MDPIPELINE_INTERNAL=1
+export HOME=$(mktemp -d)          # fresh: the test image has an older mdpipeline install under its own home
 WHL=$(ls /w/*.whl); mkdir -p ~/src ~/brain && echo "# hi" > ~/src/a.md; M="uvx --from $WHL mdpipeline"
 MDPIPELINE_NO_BACKGROUND_START=1 $M init ~/brain >/dev/null 2>&1; cd ~/brain; MDPIPELINE_NO_BACKGROUND_START=1 $M pipeline add p --source ~/src >/dev/null 2>&1
 $M sync p >/dev/null 2>&1; sleep 3                                   # the first sync turns background sync on (login item + process)

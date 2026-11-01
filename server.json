@@ -1,0 +1,34 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.markdown-pipeline/mdpipeline",
+  "title": "Markdown Pipeline",
+  "description": "Your team's Jira as clean Markdown files, kept current for your AI agent. Local and read-only.",
+  "version": "0.1.15",
+  "websiteUrl": "https://markdownpipeline.com/?utm_source=mcp-registry&utm_medium=listing",
+  "repository": {
+    "url": "https://github.com/markdown-pipeline/markdown-pipeline",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mdpipeline",
+      "version": "0.1.15",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--install-method",
+          "value": "registry"
+        },
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

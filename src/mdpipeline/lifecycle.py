@@ -8,11 +8,16 @@ import sys
 PACKAGE = "mdpipeline"
 INSTALL_URL = "https://raw.githubusercontent.com/markdown-pipeline/markdown-pipeline/main/install.sh"      # the public install script (MD-131)
 INSTALL_COMMAND = f"curl -fsSL {INSTALL_URL} | sh"
+INSTALL_PS1_URL = "https://raw.githubusercontent.com/markdown-pipeline/markdown-pipeline/main/install.ps1"      # the Windows installer (MD-183), next to install.sh
+INSTALL_COMMAND_WINDOWS = f'powershell -ExecutionPolicy ByPass -c "irm {INSTALL_PS1_URL} | iex"'             # marketing's form (MM-135)
 
 
 def update_command(method: str) -> list[str] | None:
     """The command that updates this install, or ``None`` when there is none to run (a checkout of the source)."""
     if method == "script":       # installed from a release wheel: `uv tool upgrade` cannot see newer releases, running the installer again can
+        if sys.platform == "win32":      # MD-183: there is no `sh`; the same installer in PowerShell, told not to open the app (an update must not open a window)
+            return ["powershell", "-NoProfile", "-ExecutionPolicy", "ByPass", "-Command",
+                    f"$env:MDPIPELINE_NO_OPEN='1'; irm {INSTALL_PS1_URL} | iex; exit $LASTEXITCODE"]
         return ["sh", "-c", INSTALL_COMMAND]
     if method == "uv":
         return ["uv", "tool", "upgrade", PACKAGE]

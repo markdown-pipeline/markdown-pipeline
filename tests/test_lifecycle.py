@@ -144,3 +144,29 @@ def test_uninstall_does_not_ask_the_usage_question():
 def test_the_install_command_is_one_public_curl_line_that_needs_no_login():
     assert lifecycle.INSTALL_URL == "https://raw.githubusercontent.com/markdown-pipeline/markdown-pipeline/main/install.sh"
     assert lifecycle.INSTALL_COMMAND == "curl -fsSL " + lifecycle.INSTALL_URL + " | sh"
+
+
+# --- MD-183: Windows ----------------------------------------------------------------------------------------------------------
+def test_on_windows_a_script_install_updates_by_running_the_powershell_installer_without_opening_the_app(ran, monkeypatch, capsys):
+    monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "script")
+    monkeypatch.setattr(lifecycle.sys, "platform", "win32")
+    assert cli.main(["update"]) == 0
+    (command,) = ran
+    assert command[:5] == ["powershell", "-NoProfile", "-ExecutionPolicy", "ByPass", "-Command"] and len(command) == 6
+    assert command[5] == ("$env:MDPIPELINE_NO_OPEN='1'; irm " + lifecycle.INSTALL_PS1_URL + " | iex; exit $LASTEXITCODE")      # no `sh` on Windows; update must not open a window
+
+
+def test_the_windows_install_command_is_the_one_marketing_approved():
+    assert lifecycle.INSTALL_COMMAND_WINDOWS == ('powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/markdown-pipeline/'
+                                                'markdown-pipeline/main/install.ps1 | iex"')
+
+
+def test_the_linux_update_command_does_not_change_when_not_on_windows(ran, monkeypatch):
+    monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "script")
+    monkeypatch.setattr(lifecycle.sys, "platform", "linux")
+    cli.main(["update"])
+    assert ran == [["sh", "-c", lifecycle.INSTALL_COMMAND]]
+
+
+def test_uninstall_on_windows_is_the_uv_command(monkeypatch):
+    assert lifecycle.uninstall_command("script") == "uv tool uninstall mdpipeline"

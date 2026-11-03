@@ -255,3 +255,16 @@ def test_the_public_files_go_first_because_an_empty_repository_cannot_have_a_rel
     assert kinds.index(["gh", "repo", "edit"]) < kinds.index(["gh", "repo", "clone"]) < kinds.index(["gh", "release", "create"])
     push = next(i for i, c in enumerate(calls) if c[0] == "git" and "push" in c)
     assert push < kinds.index(["gh", "release", "create"])
+
+
+# MD-183 AC5: the Windows installer is published next to install.sh, but only once it is no longer withheld (Windows released after Gate 2) -----------
+def test_install_ps1_is_not_published_while_it_is_withheld(rel):
+    assert "install.ps1" not in rel.public_files()
+
+
+def test_once_released_install_ps1_is_published_and_checked_like_install_sh(rel, monkeypatch, tmp_path):
+    sync = rel.sync_public_module()           # the same module release.py asks, so one switch (sync_public.WITHHELD) governs both scripts
+    monkeypatch.setattr(sync, "WITHHELD", {p for p in sync.WITHHELD if p != "scripts/install.ps1"})
+    files = rel.public_files()
+    assert files["install.ps1"] == APP / "scripts" / "install.ps1" and files["install.ps1"].exists()
+    assert set(files) == {"README.md", "install.sh", "install.ps1", "what-we-send.md", "usage-events.md"}

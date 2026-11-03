@@ -13,6 +13,7 @@ def test_the_os_is_one_of_the_fixed_names(platform, expected):
 @pytest.mark.parametrize("prefix,expected", [
     ("/home/a/.local/share/uv/tools/mdpipeline", "uv"),
     ("/Users/a/.local/share/uv/tools/mdpipeline", "uv"),
+    ("C:\\Users\\a\\AppData\\Roaming\\uv\\tools\\mdpipeline", "uv"),               # MD-183: a Windows uv tool install is recognised too
     ("C:\\Users\\a\\AppData\\Roaming\\uv\\tools\\mdpipeline", "uv"),
     ("/home/a/.local/pipx/venvs/mdpipeline", "pipx"),
     ("/Users/a/.local/share/pipx/venvs/mdpipeline", "pipx"),

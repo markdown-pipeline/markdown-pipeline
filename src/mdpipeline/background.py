@@ -3,8 +3,11 @@ without the UI open. Started at login (see ``autostart``). One instance at a tim
 A tick that fails is skipped; the process only ends when asked to."""
 from __future__ import annotations
 
+import json
 import os
+import re
 import sys
+import threading
 import time
 from collections.abc import Callable
 
@@ -14,7 +17,11 @@ from .vault import data_dir
 TICK_SECONDS = 60
 STARTUP_WAIT_SECONDS = 3.0          # MD-166: how long a command waits for a process it just started to take the lock
 STARTUP_POLL_SECONDS = 0.2
+RESTART_WAIT_SECONDS = 900           # MD-204: a replacement process waits this long for the old one to finish its sync and let go of the lock
+SAFE_STOP_VERSION = "0.1.16"          # MD-204: the first version whose SIGTERM handler lets the sync it is on finish (older ones end at once)
+UNKNOWN_VERSION = "unknown"          # a process that holds the lock but left no version record: it started before MD-204, so it is older than this code
 started_this_run = False             # set by ensure_running: this command has just started the process
+_terminate_requested = False         # MD-204: a SIGTERM arrived; the loop ends at the next safe point (after the brain being synced)
 
 
 def _lock_path():
@@ -25,9 +32,14 @@ def _stop_path():
     return data_dir() / "background.stop"
 
 
+def _record_path():
+    return data_dir() / "background.json"
+
+
 def stop_requested() -> bool:
-    """MD-181: someone asked this process to end (Windows has no clean signal, so the ask is a file the loop looks at)."""
-    return _stop_path().exists()
+    """MD-181: someone asked this process to end (Windows has no clean signal, so the ask is a file the loop looks at).
+    MD-204: on Linux and macOS a SIGTERM counts the same, so it never cuts a sync in half."""
+    return _terminate_requested or _stop_path().exists()
 
 
 def _clear_stop_request() -> None:
@@ -58,6 +70,75 @@ def is_running() -> bool:
         os.close(fd)
 
 
+def _version_numbers(version: str) -> tuple[int, ...] | None:
+    numbers = re.findall(r"\d+", version or "")
+    return tuple(int(n) for n in numbers[:3]) if numbers else None
+
+
+def running_version() -> str | None:
+    """MD-204: the version of the background process that holds the lock now (``None`` when none runs). A process that left no record of its own
+    (it started before this existed, or the record belongs to another process) is ``UNKNOWN_VERSION``."""
+    if not is_running():
+        return None
+    try:
+        pid = int(_lock_path().read_text(encoding="utf-8").strip())
+        record = json.loads(_record_path().read_text(encoding="utf-8"))
+        if record.get("pid") == pid and isinstance(record.get("version"), str) and record["version"]:
+            return record["version"]
+    except (OSError, ValueError, AttributeError):
+        pass
+    return UNKNOWN_VERSION
+
+
+def is_outdated() -> bool:
+    """MD-204: a background process runs, and its version is older than the installed one. Never true for a newer one (a checkout run beside an
+    installed copy must not make the two restart each other)."""
+    from . import __version__
+
+    running = running_version()
+    if running is None:
+        return False
+    if running == UNKNOWN_VERSION:
+        return True
+    old, installed = _version_numbers(running), _version_numbers(__version__)
+    return bool(old and installed and old < installed)
+
+
+def stops_safely(version: str | None) -> bool:
+    """MD-204: whether a background process of this version finishes its sync when asked to stop (it has the SIGTERM handler)."""
+    numbers, safe = _version_numbers(version or ""), _version_numbers(SAFE_STOP_VERSION)
+    return bool(numbers and safe and version != UNKNOWN_VERSION and numbers >= safe)
+
+
+def restart() -> str:
+    """MD-204: replace the background process with one of the installed version, between syncs: the old one is asked to stop (it finishes the brain it
+    is on, if its version can), and a new one waits for the lock. Returns ``off`` / ``not-set-up`` / ``started`` / ``restarting`` (it finishes its sync
+    first) / ``restarting-unsafe`` (an older process ends at once) / ``could-not-stop``."""
+    from . import autostart
+
+    from .schedulestore import SchedulerStore
+
+    if not scheduler.background_enabled():
+        return "off"
+    if not is_running():
+        if not SchedulerStore().read()["background"].get("announced"):          # it turns on by itself after the first sync; a restart must not start it earlier
+            return "not-set-up"
+        autostart.start_now(how="app_start")
+        return "started"
+    safe = stops_safely(running_version())
+    if not stop():
+        return "could-not-stop"
+    autostart.start_now(how="app_start", wait_for_lock=RESTART_WAIT_SECONDS)
+    return "restarting" if safe else "restarting-unsafe"
+
+
+def restart_if_outdated() -> bool:
+    """MD-204: ``restart`` when the running process is older than the installed code and background sync is on. Returns whether it restarted."""
+    if not scheduler.background_enabled() or not is_outdated():
+        return False
+    return restart().startswith("restarting")
+
+
 def stop() -> bool:
     """Ask the running background process (the holder of the lock) to end. Returns whether one was asked."""
     import signal
@@ -83,16 +164,56 @@ def stop() -> bool:
     return True
 
 
-def run(*, max_ticks: int | None = None, sleep: Callable[[float], None] = _sleep_until_asked_to_stop, interval: float = TICK_SECONDS, how: str = "manual") -> bool:
-    """Tick until stopped (``max_ticks`` is for tests). Returns False at once when another background process is already running."""
+def _take_lock(fd: int, wait_for_lock: float) -> bool:
+    """Take the single-instance lock, waiting up to ``wait_for_lock`` seconds for a process that is finishing (MD-204: a restart)."""
+    deadline = time.monotonic() + wait_for_lock
+    while not filelock.try_lock(fd):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.25)
+    return True
+
+
+def _install_sigterm_handler():
+    """MD-204: SIGTERM ends the loop at a safe point instead of killing the process in the middle of a sync. Only where there is a real signal
+    (Windows stops through a file, MD-181) and only in the main thread. Returns the previous handler to put back."""
+    import signal
+
+    global _terminate_requested
+    _terminate_requested = False
+    if sys.platform == "win32" or threading.current_thread() is not threading.main_thread():
+        return None
+
+    def ask_to_stop(signum, frame):       # noqa: ARG001
+        global _terminate_requested
+        _terminate_requested = True
+
+    return signal.signal(signal.SIGTERM, ask_to_stop)
+
+
+def run(*, max_ticks: int | None = None, sleep: Callable[[float], None] = _sleep_until_asked_to_stop, interval: float = TICK_SECONDS, how: str = "manual",
+        wait_for_lock: float = 0) -> bool:
+    """Tick until stopped (``max_ticks`` is for tests). Returns False at once when another background process is already running
+    (``wait_for_lock``: wait that many seconds for it to end first, MD-204)."""
+    import signal
+
+    from . import __version__
+
     path = _lock_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    previous, held = None, False
     try:
-        if not filelock.try_lock(fd):
+        if not _take_lock(fd, wait_for_lock):
             return False
+        held = True
         os.ftruncate(fd, 0)
         os.write(fd, str(os.getpid()).encode())          # who holds the lock, so `uninstall` can stop exactly this process
+        try:
+            _record_path().write_text(json.dumps({"pid": os.getpid(), "version": __version__}), encoding="utf-8")      # MD-204: which version this is
+        except OSError:
+            pass
+        previous = _install_sigterm_handler()
         _clear_stop_request()                           # MD-181: a request left by an earlier stop must not end this new process at once
         from . import usage_hooks
 
@@ -114,6 +235,13 @@ def run(*, max_ticks: int | None = None, sleep: Callable[[float], None] = _sleep
         _clear_stop_request()
         return True
     finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
+        if held:                                         # never remove the record of the process that does hold the lock
+            try:
+                _record_path().unlink()
+            except OSError:
+                pass
         os.close(fd)
 
 
@@ -124,7 +252,7 @@ def _refresh_login_item() -> None:
         return
 
 
-def ensure_running(*, how: str = "app_start") -> bool:
+def ensure_running(*, how: str = "app_start", restart_outdated: bool = True) -> bool:
     """MD-165 self-healing: background sync is on (turned on by the first sync, not opted out) but nothing runs, so start it now.
     Called by every start of the app and every ``mdpipeline`` command. The lock keeps it to one process. Returns whether one was started."""
     from . import autostart
@@ -133,7 +261,14 @@ def ensure_running(*, how: str = "app_start") -> bool:
     global started_this_run
     started_this_run = False
     state = SchedulerStore().read()["background"]
-    if not state.get("enabled", True) or not state.get("announced") or is_running():
+    if not state.get("enabled", True) or not state.get("announced"):
+        return False
+    if is_running():
+        if restart_outdated:                # MD-204: the first command after an update replaces a process that still runs the old code
+            try:
+                restart_if_outdated()
+            except Exception:               # noqa: BLE001 - housekeeping never breaks the command
+                pass
         return False
     started_this_run = autostart.start_now(how=how)
     return started_this_run

@@ -107,12 +107,14 @@ def is_enabled(*, home: Path | None = None, platform: str | None = None) -> bool
     return item_path(home=home, platform=platform).exists()
 
 
-def start_now(python: str | None = None, how: str = "app_start") -> bool:
-    """Start the background process right away, detached (the login item only takes effect at the next login). Best effort."""
+def start_now(python: str | None = None, how: str = "app_start", wait_for_lock: float = 0) -> bool:
+    """Start the background process right away, detached (the login item only takes effect at the next login). Best effort.
+    ``wait_for_lock`` (MD-204, a restart): the new process waits that many seconds for the old one to finish its sync and let go of the lock."""
     if os.environ.get("MDPIPELINE_NO_BACKGROUND_START"):        # a kill switch for tests, CI and people who want only the login item
         return False
+    wait = ["--wait-for-lock", str(int(wait_for_lock))] if wait_for_lock else []
     try:
-        subprocess.Popen([python or sys.executable, *COMMAND_ARGS, "--started-by", how], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        subprocess.Popen([python or sys.executable, *COMMAND_ARGS, "--started-by", how, *wait], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, **detached_kwargs())
         return True
     except OSError:

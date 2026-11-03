@@ -67,3 +67,15 @@ def test_the_script_never_commits(trees):
     private, public = trees
     sync.apply(public, private)
     assert subprocess.run(["git", "log"], cwd=public, capture_output=True).returncode != 0          # still no commit in the clone
+
+
+# --- MD-183: the Windows installer is public only when Windows is released --------------------------------------------------------------
+def test_install_ps1_is_withheld_from_the_public_tree_until_windows_is_released():
+    assert "scripts/install.ps1" in sync.WITHHELD
+    assert "install.ps1" not in sync.wanted()
+
+
+def test_once_released_install_ps1_is_copied_to_the_public_root(monkeypatch):
+    monkeypatch.setattr(sync, "WITHHELD", {p for p in sync.WITHHELD if p != "scripts/install.ps1"})
+    wanted = sync.wanted()
+    assert wanted.get("install.ps1") == "scripts/install.ps1" and wanted.get("scripts/install.ps1") == "scripts/install.ps1"

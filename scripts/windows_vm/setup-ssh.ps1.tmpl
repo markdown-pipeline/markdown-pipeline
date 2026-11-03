@@ -1,0 +1,42 @@
+# MD-184 part B: OpenSSH server for the Gate 2 VM, with the host's key only. Runs elevated at first logon from the answer-file disc (label UNATTEND), or by hand.
+# OpenSSH comes from the Win32-OpenSSH release on GitHub (pinned): `Add-WindowsCapability` downloads from Windows Update inside the VM and hung for over an hour.
+# @SSH_PUBLIC_KEY@ is filled in by scripts/windows_vm_gate.sh at build time. Progress goes to C:\build-ssh.log; C:\build-done.txt marks success.
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$log = 'C:\build-ssh.log'
+function Log($m) { Add-Content $log ((Get-Date -Format o) + ' ' + $m) }
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $installed = $false
+    try {
+        $zip = Join-Path $env:TEMP 'OpenSSH-Win64.zip'
+        Log 'downloading OpenSSH from GitHub'
+        Invoke-WebRequest -Uri 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/v9.8.1.0p1-Preview/OpenSSH-Win64.zip' -OutFile $zip -UseBasicParsing -TimeoutSec 300
+        Expand-Archive -Path $zip -DestinationPath 'C:\Program Files' -Force
+        Log 'install-sshd'
+        & 'C:\Program Files\OpenSSH-Win64\install-sshd.ps1'
+        $installed = $true
+    } catch {
+        Log ('GitHub route failed: ' + $_)
+    }
+    if (-not $installed) {      # fallback: the Windows capability, but never wait for it longer than 15 minutes
+        Log 'falling back to the Windows capability'
+        $job = Start-Job { Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 }
+        if (-not (Wait-Job $job -Timeout 900)) { throw 'the Windows capability install timed out' }
+    }
+    Set-Service sshd -StartupType Automatic
+    Start-Service sshd
+    New-NetFirewallRule -Name sshd -DisplayName 'OpenSSH' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
+    New-Item -Path HKLM:\SOFTWARE\OpenSSH -Force | Out-Null
+    New-ItemProperty -Path HKLM:\SOFTWARE\OpenSSH -Name DefaultShell -Value 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -PropertyType String -Force | Out-Null
+    New-Item -ItemType Directory -Force -Path C:\ProgramData\ssh | Out-Null
+    $keys = 'C:\ProgramData\ssh\administrators_authorized_keys'
+    Set-Content -Path $keys -Value '@SSH_PUBLIC_KEY@' -Encoding ascii
+    icacls $keys /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F' | Out-Null
+    Restart-Service sshd
+    Set-Content C:\build-done.txt (Get-Date -Format o)
+    Log 'done'
+} catch {
+    Log ('FAILED: ' + $_)
+    throw
+}

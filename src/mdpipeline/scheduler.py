@@ -212,6 +212,9 @@ def turn_off_background() -> None:
         autostart.disable_user_service()
     except OSError:
         pass
+    from . import background
+
+    background.stop()                       # MD-204: "off" ends the running process too (after the sync it is in), not only the login item
 
 
 def turn_on_background() -> None:
@@ -221,7 +224,12 @@ def turn_on_background() -> None:
     try:
         autostart.enable()
         _enable_user_service()
-        autostart.start_now()
+        from . import background
+
+        if background.is_running():          # MD-204: "off" then "on" at once: the old one is still finishing its sync, so the new one waits for the lock
+            autostart.start_now(wait_for_lock=background.RESTART_WAIT_SECONDS)
+        else:
+            autostart.start_now()
     except (autostart.AutostartError, OSError):
         pass
 

@@ -14,8 +14,9 @@ import sys
 from pathlib import Path
 
 APP = Path(__file__).resolve().parent.parent
-WITHHELD = {".github/workflows/windows-tests.yml"}       # publish-pypi.yml went public 2026-10-29 (owner steps done); publish-registry.yml goes public with v0.1.15 (MD-199, product 11172)
-ROOT_COPIES = {"install.sh": "scripts/install.sh", "usage-events.md": "docs/usage-events.md", "what-we-send.md": "docs/what-we-send.md"}     # public path -> source
+# publish-pypi.yml went public 2026-10-29; publish-registry.yml with v0.1.15 (MD-199, product 11172). install.ps1 (MD-183) goes public with the Windows release, after Gate 2 (MD-184): take it out then.
+WITHHELD = {".github/workflows/windows-tests.yml", "scripts/install.ps1"}
+ROOT_COPIES = {"install.sh": "scripts/install.sh", "install.ps1": "scripts/install.ps1", "usage-events.md": "docs/usage-events.md", "what-we-send.md": "docs/what-we-send.md"}     # public path -> source
 
 
 def tracked(app: Path = APP) -> list[str]:

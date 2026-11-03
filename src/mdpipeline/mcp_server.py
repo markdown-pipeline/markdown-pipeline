@@ -13,7 +13,7 @@ from typing import Callable
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from . import changes, usage
+from . import __version__, changes, usage
 from .brain import CONFIG_DIR_NAME, CONFIG_FILE_NAME, Brain, BrainError, find_brain
 from .brainquery import QueryError, list_path, read_file, search
 from .config import load_config
@@ -68,7 +68,7 @@ def brain_provider(explicit: str | None, cwd: Callable[[], str] = os.getcwd) -> 
 
 
 def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
-    server = MCPServer("mdpipeline", instructions=INSTRUCTIONS)
+    server = MCPServer("mdpipeline", instructions=INSTRUCTIONS, version=__version__)
     provide = brain if callable(brain) else (lambda: brain)
     announced = []
 

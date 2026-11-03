@@ -77,7 +77,10 @@ def test_state_has_no_notices_when_all_is_well(one):
 def test_the_state_describes_the_background_process(one):
     with running_ui(one) as ui:
         bg = ui.get("/api/state")[1]["background"]
-    assert bg == {"enabled": True, "announced": False, "running": False, "announce_pending": False, "linger_hint": False, "linger_notice": False}
+    import mdpipeline
+
+    assert bg == {"enabled": True, "announced": False, "running": False, "announce_pending": False, "linger_hint": False, "linger_notice": False,
+                  "version": None, "installed_version": mdpipeline.__version__, "outdated": False}       # MD-204: which version runs, and whether it is older
 
 
 def test_the_first_ui_sync_turns_the_background_on_and_returns_the_plain_words_once(one):

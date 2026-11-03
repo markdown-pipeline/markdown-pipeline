@@ -1647,7 +1647,7 @@ function renderBackgroundSettings() {
     <h2 id="bg-set-h">Background sync</h2>
     <p>Keep syncing when this window is closed (starts when you log in to your desktop). How often each pipeline syncs is set on Home.</p>
     <div class="seg" role="group" aria-label="Background sync">${btn(true, "On")}${btn(false, "Off")}</div>
-    <p class="usage-status" role="status">${bg.enabled ? (bg.running ? "On, and running now." : "On, but not running right now. Opening the app or running any mdpipeline command starts it again.") : "Off. Nothing syncs by itself. Use Sync now, or turn this on."}</p>
+    <p class="usage-status" role="status">${bg.enabled ? (bg.running ? (bg.outdated ? `<span id="bg-outdated">${esc(`On, but still running ${bg.version && bg.version !== "unknown" ? `the older version ${bg.version}` : "an older version"} (installed: ${bg.installed_version}). To restart it, open a terminal and run: ${CLI} schedule background restart`)}</span>` : "On, and running now.") : "On, but not running right now. Opening the app or running any mdpipeline command starts it again.") : "Off. Nothing syncs by itself. Use Sync now, or turn this on."}</p>
     ${bg.enabled && bg.linger_hint && bg.linger_text ? `${noteLinger("settings")}<p class="small" id="bg-linger">${lingerHtml(bg.linger_text)}</p>` : ""}
     <p class="small muted">In a terminal: <code>${CLI} schedule background off</code></p></section>`;
 }

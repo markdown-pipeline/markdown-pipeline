@@ -75,7 +75,7 @@ needs the network) and about 10 s (warm cache).
 
 **Update:** `mdpipeline update` runs the install command again for an install made by the script (for other installs it runs your package manager's
 upgrade: `uv tool upgrade`, `pipx upgrade` or `pip install --upgrade`; `--dry-run` shows it). Your configuration, vault and synced files are outside the program and are not touched; the first plan after an update
-is what the old version would have planned (tested). Background sync picks up the new version at your next login.
+is what the old version would have planned (tested). If background sync is running, `update` replaces it with a process of the new version, between syncs: the old one finishes the pipeline it is syncing and ends, and the new one takes over. `mdpipeline schedule` says which version runs. If an older one still runs (an update made by a version before 0.1.16), the first `mdpipeline` command after the update, or `mdpipeline schedule background restart`, replaces it.
 
 **Uninstall:** `mdpipeline uninstall` turns background sync off, stops the background process and removes its login item, then prints the one
 command that removes the program (for example `uv tool uninstall mdpipeline`). Your synced Markdown files, your brains and their
@@ -303,7 +303,8 @@ not a mapping, not UTF-8), is reported as an error and skipped.
 | `uninstall` | stop background sync, remove its login item, print the command that removes the program (files are kept) |
 | `schedule [show]` | each pipeline's interval, last sync and next sync, and whether background sync is on |
 | `schedule set NAME 15m\|1h\|6h\|daily\|off` | how often one pipeline syncs by itself (default `1h`) |
-| `schedule background on\|off` | the opt-out: turn the background process (and its login item) off or on |
+| `schedule background on\|off` | the opt-out: turn the background process (and its login item) off or on; `off` also ends the running process, after the sync it is in |
+| `schedule background restart` | replace the running background process with one of the installed version, between syncs (`update` does this for you) |
 | `background` | run the background process in this terminal (the login item runs this; only one runs at a time) |
 
 **Exit codes:** `0` ok (also paused / nothing to do) - `1` runtime error, or a sync whose result is `error` -

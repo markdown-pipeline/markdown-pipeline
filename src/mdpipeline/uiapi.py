@@ -206,6 +206,11 @@ def background_view() -> dict:
     pending = bool(state.get("announced")) and not state.get("acknowledged")
     view = {"enabled": bool(state.get("enabled", True)), "announced": bool(state.get("announced")), "running": background.is_running(),
             "announce_pending": pending}
+    from . import __version__
+
+    view["version"] = background.running_version()                         # MD-204: which version the running process is (None when none runs)
+    view["installed_version"] = __version__
+    view["outdated"] = bool(view["running"] and background.is_outdated())
     view["linger_hint"] = view["enabled"] and autostart.linger_hint()
     from .scheduler import linger_notice_hidden
 

@@ -117,10 +117,29 @@ def repo_settings_command(repo: str) -> list[str]:
     return ["gh", "repo", "edit", repo, "--enable-issues", "--description", REPO_DESCRIPTION, *topics]
 
 
+_SYNC_PUBLIC = None
+
+
+def sync_public_module():
+    """scripts/sync_public.py, loaded once by path (``scripts`` is not a package). Its ``WITHHELD`` set is the one switch for what may be public yet."""
+    global _SYNC_PUBLIC
+    if _SYNC_PUBLIC is None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("sync_public", APP / "scripts" / "sync_public.py")
+        _SYNC_PUBLIC = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_SYNC_PUBLIC)
+    return _SYNC_PUBLIC
+
+
 def public_files() -> dict[str, Path]:
-    """What the public repo holds besides the Releases: its README, the install script and the plain-words pages. No source code."""
-    return {"README.md": APP / "README.md", "install.sh": APP / "scripts" / "install.sh",
-            "what-we-send.md": APP / "docs" / "what-we-send.md", "usage-events.md": APP / "docs" / "usage-events.md"}
+    """What the public repo holds besides the Releases: its README, the install scripts and the plain-words pages. No source code.
+    ``install.ps1`` (MD-183) is in it only once it is no longer withheld in ``sync_public.WITHHELD`` (the Windows release, after Gate 2)."""
+    files = {"README.md": APP / "README.md", "install.sh": APP / "scripts" / "install.sh",
+             "what-we-send.md": APP / "docs" / "what-we-send.md", "usage-events.md": APP / "docs" / "usage-events.md"}
+    if "scripts/install.ps1" not in sync_public_module().WITHHELD:
+        files["install.ps1"] = APP / "scripts" / "install.ps1"
+    return files
 
 
 def sync_public_files(repo: str, runner: Callable[[list[str]], tuple[int, str]], *, workdir: Path, publish: bool) -> bool:

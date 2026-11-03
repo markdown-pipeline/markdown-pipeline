@@ -15,6 +15,7 @@ import getpass
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -375,11 +376,12 @@ def build_parser() -> argparse.ArgumentParser:
     scset = scsub.add_parser("set", help="change how often one pipeline syncs by itself")
     scset.add_argument("pipeline")
     scset.add_argument("interval", help="15m, 1h, 6h, daily or off")
-    scbg = scsub.add_parser("background", help="turn the background process on or off (it also removes or restores the login item)")
-    scbg.add_argument("state", choices=["on", "off"])
+    scbg = scsub.add_parser("background", help="turn the background process on or off (it also removes or restores the login item), or restart it")
+    scbg.add_argument("state", choices=["on", "off", "restart"])
     bgp = sub.add_parser("background", help="run the background process in this terminal (the login item runs this for you)",
                          description="Syncs the pipelines that are due, every minute, until stopped. Only one runs at a time.")
     bgp.add_argument("--started-by", choices=["login_item", "user_service", "app_start", "manual"], default="manual", help=argparse.SUPPRESS)
+    bgp.add_argument("--wait-for-lock", type=float, default=0, help=argparse.SUPPRESS)       # MD-204: a restart's new process waits for the old one to end
     return parser
 
 
@@ -1307,6 +1309,17 @@ def cmd_sync(args) -> int:
     return exit_for(results)
 
 
+def _updated_line() -> str:
+    """MD-204: "Updated to version X." where X is asked of the newly installed code in a new interpreter (this process still runs the old code, so its
+    own version would be wrong). If it cannot be read, the line leaves the version out rather than guess."""
+    try:
+        done = subprocess.run([sys.executable, "-c", "import mdpipeline; print(mdpipeline.__version__)"], capture_output=True, text=True, timeout=60)
+        version = done.stdout.strip().splitlines()[-1] if done.returncode == 0 and done.stdout.strip() else ""
+    except (OSError, subprocess.SubprocessError):
+        version = ""
+    return f"Updated to version {version}. Your configuration, vault and files are unchanged." if version else "Updated. Your configuration, vault and files are unchanged."
+
+
 def cmd_update(args) -> int:
     from . import install_info, lifecycle
 
@@ -1328,8 +1341,12 @@ def cmd_update(args) -> int:
     if code != 0:
         err(f"Error: the update command failed (exit {code}), so the app was not updated. Nothing else was changed.")
         return EXIT_RUNTIME
-    print("Updated. Your configuration, vault and files are as they were. Background sync starts the new version at your next login "
-          "(or now: mdpipeline schedule background off, then on).")
+    print(_updated_line())
+    # MD-204: this process still runs the OLD code, so the restart is a new interpreter: the newly installed code answers, and its words are true
+    try:
+        subprocess.run([sys.executable, "-m", "mdpipeline", "schedule", "background", "restart"], check=False, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        print("Background sync may still be running the old version. To restart it, run: mdpipeline schedule background restart")
     return EXIT_OK
 
 
@@ -1337,8 +1354,7 @@ def cmd_uninstall(args) -> int:
     from . import background, install_info, lifecycle, scheduler
     from .vault import data_dir
 
-    scheduler.turn_off_background()
-    background.stop()
+    scheduler.turn_off_background()           # MD-204: this also stops the running process
     print("Background sync is off and its login item is removed.")
     print(f"To remove the program, run:  {lifecycle.uninstall_command(install_info.install_method())}")
     print("Your synced Markdown files, your output folders and their configuration are untouched.")
@@ -1558,7 +1574,18 @@ def cmd_schedule(args) -> int:
             print(f"{args.pipeline}: syncs every {args.interval}.")
         return EXIT_OK
     if action == "background":
-        if args.state == "off":
+        if args.state == "restart":
+            from . import background
+            from . import __version__
+
+            result = background.restart()
+            print({"restarting": f"Background sync is restarting on version {__version__}. A sync in progress finishes first.",
+                   "restarting-unsafe": f"Background sync is restarting on version {__version__}. If a sync was running, it starts again on the next run.",
+                   "started": f"Background sync was not running. Starting it now on version {__version__}.",
+                   "off": "Background sync is off. Turn it on with: mdpipeline schedule background on",
+                   "not-set-up": "Background sync is not set up yet. It turns on after your first successful sync.",
+                   "could-not-stop": "Background sync didn't stop. End the mdpipeline process, then run: mdpipeline schedule background restart"}[result])
+        elif args.state == "off":
             scheduler.turn_off_background()
             print("Background sync is off: nothing syncs by itself and the login item is removed. Turn it on again: mdpipeline schedule background on")
         else:
@@ -1570,15 +1597,21 @@ def cmd_schedule(args) -> int:
     data = brain_status(brain, now=now)
     from . import background
 
+    from . import __version__
+
     if not scheduler.background_enabled():
         state = "off"
     elif background.is_running():
-        state = "on"
+        state = f"on (version {background.running_version()}; intervals: {', '.join(SCHEDULE_VALUES)})"
+        if background.is_outdated():          # MD-204: one clear next step
+            known = background.running_version()
+            what = "an older version" if known == background.UNKNOWN_VERSION else f"the older version {known}"
+            state = f"on, but it is still running {what} (installed: {__version__}). Restart it: mdpipeline schedule background restart"
     elif background.started_this_run:         # MD-166: this very command started it; never say "not running" about it
         state = "on" if background.wait_until_running() else "on (starting now)"
     else:
         state = "on but not running (start it with: mdpipeline background)"
-    print(f"Background sync: {state} (intervals: {', '.join(SCHEDULE_VALUES)})")
+    print(f"Background sync: {state}" + ("" if state.startswith(("on (version", "on, but")) else f" (intervals: {', '.join(SCHEDULE_VALUES)})"))
     if state != "off":
         _print_linger_line()
     for p in data["pipelines"]:
@@ -1603,7 +1636,8 @@ def _print_linger_line() -> None:
 def cmd_background(args) -> int:
     from . import background
 
-    if not background.run(how=getattr(args, "started_by", "manual")):
+    wait = {"wait_for_lock": args.wait_for_lock} if getattr(args, "wait_for_lock", 0) else {}       # MD-204: only a restart's new process waits
+    if not background.run(how=getattr(args, "started_by", "manual"), **wait):
         print("The background process is already running.")
     return EXIT_OK
 
@@ -1673,20 +1707,23 @@ def main(argv: list[str] | None = None) -> int:
             usage.flush_detached()           # returns at once: the command never waits for the network
 
 
-def self_heal_background(command: str) -> None:
+def self_heal_background(command: str, action: str | None = None) -> None:
     """MD-165: background sync is on but not running (a reboot with no desktop login): any command starts it again. Never breaks the command."""
     if command in ("background", "uninstall"):
         return
     try:
         from . import background
 
-        background.ensure_running()
+        if command == "update" or (command == "schedule" and action == "background"):
+            background.ensure_running(restart_outdated=False)         # MD-204: those two restart it themselves
+        else:
+            background.ensure_running()
     except Exception:                   # noqa: BLE001
         return
 
 
 def _main(args) -> int:
-    self_heal_background(args.command)
+    self_heal_background(args.command, getattr(args, "schedule_action", None))
     if needs_usage_notice(args.command):
         first_run_usage_notice()
         if args.command != "ui":                     # the UI reports its own launch

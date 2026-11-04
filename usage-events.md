@@ -647,6 +647,33 @@ Example payload as sent:
 }
 ```
 
+### `front_matter_warning`
+
+H-FM-3: how common invalid hand-written front matter is in real folders (MD-201: a count of files, no path, no name, no line). Emitted from: engine.
+
+| Property | Allowed values |
+|---|---|
+| `files_count` | whole number, 0 to 1,000 |
+
+Example payload as sent:
+
+```json
+{
+  "event": "front_matter_warning",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "files_count": 1,
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
 ### `guard_triggered`
 
 Big-change friction. Emitted from: engine.
@@ -1030,12 +1057,15 @@ Example payload as sent:
 
 ### `install_completed`
 
-Install funnel. Emitted from: cli.
+Install funnel; when the install script downloaded a release asset, which one (MD-205: release downloads we can tell from other people's, with is_internal). Emitted from: cli.
 
 | Property | Allowed values |
 |---|---|
 | `os` | `macos` / `linux` / `windows` / `other` |
 | `install_method` | `script` / `pip` / `pipx` / `uv` / `uvx` / `registry` / `source` / `other` |
+| `release_version` | a release number such as `0.3.1` |
+| `asset_name` | the file name of our release wheel, such as `mdpipeline-0.3.1-py3-none-any.whl` (nothing else is accepted) |
+| `download_source` | `github_release` |
 
 Example payload as sent:
 
@@ -1048,6 +1078,9 @@ Example payload as sent:
   "properties": {
     "os": "macos",
     "install_method": "script",
+    "release_version": "0.1.16",
+    "asset_name": "mdpipeline-0.1.16-py3-none-any.whl",
+    "download_source": "github_release",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -1319,11 +1352,15 @@ Example payload as sent:
 
 ### `app_updated`
 
-Update adoption. Emitted from: ui, cli.
+Update adoption; when `update` (a script install) downloaded a release asset, which one (MD-205). Emitted from: ui, cli.
 
 | Property | Allowed values |
 |---|---|
 | `previous_version` | a release number such as `0.3.1` |
+| `install_method` | `script` / `pip` / `pipx` / `uv` / `uvx` / `registry` / `source` / `other` |
+| `release_version` | a release number such as `0.3.1` |
+| `asset_name` | the file name of our release wheel, such as `mdpipeline-0.3.1-py3-none-any.whl` (nothing else is accepted) |
+| `download_source` | `github_release` |
 
 Example payload as sent:
 
@@ -1335,6 +1372,10 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "previous_version": "0.3.1",
+    "install_method": "script",
+    "release_version": "0.3.2",
+    "asset_name": "mdpipeline-0.3.2-py3-none-any.whl",
+    "download_source": "github_release",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",

@@ -31,12 +31,14 @@ ALLOWED_WRITERS = {
     "firstrun.py": "guided first run: where the person stopped (no token) in the app data directory (MD-118); the destination folder is created only on 'Write N files'",
     "agents.py": "connect your agent (MD-120): the instructions file (AGENTS.md) in the folder the files went to, only on the person's click, never overwritten without asking; which agents it connected, in the app data directory",
     "folderbrowser.py": "the folder browser (MD-142): creates ONE empty folder, only when the person presses Create in 'New folder' (output case), with a single plain name; never overwrites, never writes a file",
+    "updatecheck.py": "the update check (MD-222): its own small JSON file in the app data directory (when it last asked, the newest version, what it showed); never inside a brain",
     "feedback.py": "which one-question prompts were shown or answered (MD-123): one small JSON file in the app data directory, never inside a brain",
 }
 NETWORK_MODULES = {
     "github_api.py": "the GitHub target's REST client: https only, only the configured host, token only in the Authorization header",
     "github_signin.py": "Sign in with GitHub: only the two github.com login endpoints, https only, no client secret (MD-83)",
     "jira_api.py": "the Jira connector's REST client: read-only allow-list, https only, only the configured Atlassian site host",
+    "updatecheck.py": "the once-a-day look for a newer version (MD-222): https only, only pypi.org, a plain GET with no query string and no install ID",
     "usage.py": "anonymous usage data: https only, only the analytics host, nothing sent without consent (MD-115)",
 }
 LOCAL_SOCKET_MODULES: dict[str, str] = {}

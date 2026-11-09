@@ -15,7 +15,10 @@ from pathlib import Path
 
 APP = Path(__file__).resolve().parent.parent
 # publish-pypi.yml went public 2026-10-29; publish-registry.yml with v0.1.15 (MD-199, product 11172). install.ps1 (MD-183) goes public with the Windows release, after Gate 2 (MD-184): take it out then.
-WITHHELD = {".github/workflows/windows-tests.yml", "scripts/install.ps1"}
+WITHHELD = {"scripts/install.ps1"}
+# DEV-11: the public repo's workflows are its own (publish-registry, verify-channels...) and the private CI (linux-tests, windows-tests, publish-pypi) must never go
+# public: so nothing under these prefixes is ever written to, or deleted from, the public clone. (GitHub also refuses a push that touches them without the Workflows right.)
+NOT_SYNCED_PREFIXES = (".github/workflows/",)
 ROOT_COPIES = {"install.sh": "scripts/install.sh", "install.ps1": "scripts/install.ps1", "usage-events.md": "docs/usage-events.md", "what-we-send.md": "docs/what-we-send.md"}     # public path -> source
 
 
@@ -26,7 +29,7 @@ def tracked(app: Path = APP) -> list[str]:
 
 def wanted(app: Path = APP) -> dict[str, str]:
     """public path -> source path (both relative)."""
-    files = {p: p for p in tracked(app) if p not in WITHHELD}
+    files = {p: p for p in tracked(app) if p not in WITHHELD and not p.startswith(NOT_SYNCED_PREFIXES)}
     files.update({public: source for public, source in ROOT_COPIES.items() if source in files})
     return files
 
@@ -36,7 +39,7 @@ def plan(public: Path, app: Path = APP) -> tuple[list[str], list[str]]:
     want = wanted(app)
     write = [p for p, src in sorted(want.items()) if not (public / p).is_file() or (public / p).read_bytes() != (app / src).read_bytes()]
     have = [p for p in subprocess.run(["git", "ls-files", "-z"], cwd=public, capture_output=True, check=True).stdout.decode().split("\0") if p]
-    return write, sorted(p for p in have if p not in want and (public / p).is_file())      # a file already deleted but not yet committed is done
+    return write, sorted(p for p in have if p not in want and not p.startswith(NOT_SYNCED_PREFIXES) and (public / p).is_file())      # a file already deleted but not yet committed is done
 
 
 def apply(public: Path, app: Path = APP) -> tuple[list[str], list[str]]:

@@ -161,8 +161,16 @@ def test_a_source_given_in_the_environment_skips_the_release_lookup():
     assert "Installing Markdown Pipeline ..." in done.stdout and "EXIT=0" not in done.stdout          # uv could not install the nonsense source, and its code came back
 
 
+def _port_8765_is_free() -> bool:
+    import socket
+
+    with socket.socket() as probe:
+        return probe.connect_ex(("127.0.0.1", 8765)) != 0
+
+
 @needs_pwsh
 @needs_pwsh_posix
+@pytest.mark.skipif(not _port_8765_is_free(), reason="the app itself serves on its default port 8765 (the container shares the host network), and something here already holds it")
 def test_without_the_no_open_switch_it_opens_the_app_by_its_full_path(releases):
     """Not NO_OPEN: the last step is the app itself (`mdpipeline start`), which serves until stopped. It must say where it is serving."""
     flags = ["-e", f"MDPIPELINE_RELEASES_URL={releases}"]

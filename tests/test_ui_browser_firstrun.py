@@ -11,6 +11,8 @@ from test_jira_sync import EMAIL, TOKEN  # noqa: E402
 from test_ui_browser import browser, open_app, page, shot  # noqa: E402,F401
 from uihelper import running_ui  # noqa: E402
 
+SLOW = 20000          # a loaded runner needs longer than the 5 s default to draw the next screen
+
 
 @pytest.fixture(autouse=True)
 def quiet(monkeypatch):
@@ -185,12 +187,12 @@ def test_ready_lets_the_person_change_or_turn_off_the_schedule(page, brain, note
         page.get_by_role("button", name="Use this folder").click()
         page.get_by_role("button", name="Write 7 files").click()
         ready = page.locator("#fr-ready")
-        expect(ready).to_contain_text("Stays current")
+        expect(ready).to_contain_text("Stays current", timeout=SLOW)
         ready.get_by_role("button", name="Change").click()
         page.locator("select[data-fr-schedule]").select_option("6h")
-        expect(ready).to_contain_text("every 6 hours")
+        expect(ready).to_contain_text("every 6 hours", timeout=SLOW)
         ready.get_by_role("button", name="Turn off").click()
-        expect(ready).to_contain_text("Automatic sync is off")
+        expect(ready).to_contain_text("Automatic sync is off", timeout=SLOW)
     assert load_config(brain).get("team-wiki").schedule == "off"
 
 

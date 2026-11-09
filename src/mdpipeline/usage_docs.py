@@ -21,7 +21,7 @@ GROUPS: list[tuple[str, tuple[str, ...]]] = [
     ("D. Intent", ("source_scope_edited", "jira_project_pick", "folder_pick", "branch_pick")),
     ("E. Product additions (install, agent, schedule, requests, notices)", (
         "install_completed", "agent_connected", "try_started", "try_completed", "schedule_changed", "source_requested", "feedback_answered", "feedback_shown",
-        "notice_shown", "notice_hidden", "notice_acted", "app_updated", "background_started", "background_self_healed")),
+        "notice_shown", "notice_hidden", "update_notice_shown", "update_notice_acted", "notice_acted", "app_updated", "background_started", "background_self_healed")),
 ]
 EXPLICIT_SENDS = ("source_requested", "feedback_answered")
 

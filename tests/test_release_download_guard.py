@@ -31,5 +31,8 @@ def test_only_the_installer_fetches_release_assets_of_our_repo():
 
 
 def test_the_guard_sees_the_third_party_download_it_exempts():
-    text = (ROOT / ".github/workflows/publish-registry.yml").read_text(encoding="utf-8")
-    assert any(FETCH.search(l) and OTHER_REPO.search(l) for l in text.splitlines())
+    # The MCP publisher download (now in the public repo's publish-registry, DEV-10) is the kind of line it must exempt; our own asset URL is not exempt.
+    third_party = 'base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"'
+    ours = "curl -fsSL https://github.com/markdown-pipeline/markdown-pipeline/releases/latest/download/x.whl"
+    assert FETCH.search(third_party) and OTHER_REPO.search(third_party)
+    assert FETCH.search(ours) and not OTHER_REPO.search(ours)

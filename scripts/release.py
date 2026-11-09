@@ -3,14 +3,18 @@
     uv run python scripts/release.py                       # build, check the package, print what would be published (changes nothing)
     uv run python scripts/release.py --publish             # ... and publish it (needs `gh auth login` with write access to the repo)
     uv run python scripts/release.py --notes-file docs/release-notes-0.1.9.md --publish   # ... with prepared release notes
-    uv run python scripts/release.py --publish --replace   # re-upload the wheel of a release that already exists (same version)
+    uv run python scripts/release.py --publish --replace   # re-upload the wheel (and server.json) of a release that already exists (same version)
+    uv run python scripts/release.py --publish --skip-repo-settings   # CI (DEV-11): its token has no Administration right, so no `gh repo edit`
+
+server.json (version and packages[0].version must equal the release version, checked first) is attached next to the wheel in the one create call,
+because the public repo's publish-registry workflow publishes the release's server.json asset to the MCP Registry when the release is published.
 
 For the next fix release: raise ``version`` in pyproject.toml, run ``uv lock`` and commit uv.lock with it (MD-169: otherwise every ``uv run``
 rewrites the lock's version string; this script refuses to build while they differ), run the tests, run this with --publish. The public repo name is a setting
 (``--repo`` or MDPIPELINE_RELEASE_REPO) because it may still change. Only the wheel is attached: no sdist, so tests and docs stay private.
 Before anything is published the wheel is checked: only the package, no tests/docs/scripts/lock files, no keys or tokens inside, and the public
 GitHub App Client ID present (MD-129).
-After the release is on PyPI (MD-210): bump ``mdpipeline==X`` in glama.json ``buildSteps`` to the new version, and tell the owner to run Build & release in the Glama Admin tab. The PostHog project key is public and ingest-only; it ships on purpose.
+Glama rebuilds by itself on the public release (DEV-12: its Admin build installs the newest mdpipeline, Auto-Release on); glama.json mirrors that form and needs no bump. The PostHog project key is public and ingest-only; it ships on purpose.
 """
 from __future__ import annotations
 
@@ -27,6 +31,7 @@ from typing import Callable
 
 APP = Path(__file__).resolve().parent.parent
 DEFAULT_REPO = "markdown-pipeline/markdown-pipeline"
+SERVER_JSON = APP / "server.json"          # DEV-11: attached to the release; the public repo's publish-registry workflow publishes it to the MCP Registry
 
 _FORBIDDEN_NAME = re.compile(r"(^|/)(\.env[^/]*|[^/]*\.pem|[^/]*\.key|id_rsa[^/]*|__pycache__|[^/]*\.pyc|\.git|\.git[^/]*)(/|$)")
 _SECRETS = {
@@ -96,13 +101,39 @@ def wheel_problems(wheel: Path) -> list[str]:
     return problems
 
 
-def release_plan(version: str, repo: str, wheel: Path, *, exists: bool, replace: bool = False, notes: str | None = None) -> list[list[str]]:
+def server_json_problem(text: str, version: str) -> str | None:
+    """Why this server.json must not be released (``None`` = fine): its ``version`` and ``packages[0].version`` must both be the release version."""
+    try:
+        data = json.loads(text)
+        top, package = data.get("version"), data["packages"][0].get("version")
+    except (ValueError, AttributeError, KeyError, IndexError, TypeError):
+        return "server.json is not readable: it needs a version and packages[0].version"
+    if top != version:
+        return f"server.json version is {top}, the release is {version}: raise it with the package version"
+    if package != version:
+        return f"server.json packages[0].version is {package}, the release is {version}: raise it with the package version"
+    return None
+
+
+def check_server_json(version: str, path: Path | None = None) -> None:
+    path = path or SERVER_JSON
+    try:
+        problem = server_json_problem(path.read_text(encoding="utf-8"), version)
+    except OSError as exc:
+        problem = f"cannot read {path}: {exc.strerror or exc}"
+    if problem:
+        raise ReleaseError(problem)
+
+
+def release_plan(version: str, repo: str, wheel: Path, *, exists: bool, replace: bool = False, notes: str | None = None,
+                 server_json: Path | None = None) -> list[list[str]]:
     tag = tag_for(version)
+    assets = [str(wheel), *([str(server_json)] if server_json else [])]          # one call: the asset is there when the release-published event fires
     if exists and not replace:
         raise ReleaseError(f"release {tag} already exists on {repo}: raise the version in pyproject.toml, or pass --replace to re-upload the wheel")
     if exists:
-        return [["gh", "release", "upload", tag, str(wheel), "--repo", repo, "--clobber"]]
-    return [["gh", "release", "create", tag, str(wheel), "--repo", repo, "--title", f"Markdown Pipeline {version}",
+        return [["gh", "release", "upload", tag, *assets, "--repo", repo, "--clobber"]]
+    return [["gh", "release", "create", tag, *assets, "--repo", repo, "--title", f"Markdown Pipeline {version}",
              "--notes", notes if notes is not None else f"Markdown Pipeline {version}. Install: see the README of this repository.", "--latest"]]
 
 
@@ -133,36 +164,38 @@ def sync_public_module():
     return _SYNC_PUBLIC
 
 
-def public_files() -> dict[str, Path]:
-    """What the public repo holds besides the Releases: its README, the install scripts and the plain-words pages. No source code.
-    ``install.ps1`` (MD-183) is in it only once it is no longer withheld in ``sync_public.WITHHELD`` (the Windows release, after Gate 2)."""
-    files = {"README.md": APP / "README.md", "install.sh": APP / "scripts" / "install.sh",
-             "what-we-send.md": APP / "docs" / "what-we-send.md", "usage-events.md": APP / "docs" / "usage-events.md"}
-    if "scripts/install.ps1" not in sync_public_module().WITHHELD:
-        files["install.ps1"] = APP / "scripts" / "install.ps1"
-    return files
-
-
-def sync_public_files(repo: str, runner: Callable[[list[str]], tuple[int, str]], *, workdir: Path, publish: bool) -> bool:
-    """Put :func:`public_files` on the public repo's main branch (clone, copy, commit when something changed, push). Returns whether it pushed."""
-    if not publish:
-        print("DRY RUN, would sync to " + repo + ": " + ", ".join(public_files()))
-        return False
+def sync_public_files(repo: str, runner: Callable[[list[str]], tuple[int, str]], *, workdir: Path, publish: bool, version: str = "") -> bool:
+    """Make the public repo's main branch equal this checkout's tracked tree (``sync_public.apply``: the whole source, the root copies, never ``.github/workflows/``),
+    in one commit ``Source and public files at vX.Y.Z`` pushed to main; nothing changed means no commit. A dry run clones (read only) and prints the plan.
+    Returns whether it pushed."""
+    sync = sync_public_module()
     clone = workdir / "repo"
     code, text = runner(["gh", "repo", "clone", repo, str(clone)])
-    if code != 0:
-        raise ReleaseError("could not clone the public repository:\n" + text)
-    clone.mkdir(parents=True, exist_ok=True)
-    for name, src in public_files().items():
-        (clone / name).write_bytes(src.read_bytes())
-    (clone / "install.sh").chmod(0o755)
+    if code != 0 or not (clone / ".git").exists():
+        if publish:
+            raise ReleaseError("could not clone the public repository:\n" + text)
+        print(f"DRY RUN, could not clone {repo} to plan the sync ({text.splitlines()[-1] if text else 'no answer'}): it would sync {len(sync.wanted(APP))} tracked files")
+        return False
+    write, delete = sync.plan(clone, APP)
+    verb = "" if publish else "DRY RUN, "
+    print(f"{verb}{'syncing' if publish else 'would sync'} {repo}: {'' if publish else 'would '}write {len(write)} file(s), {'' if publish else 'would '}delete {len(delete)}")
+    for p in write:
+        print("  write ", p)
+    for p in delete:
+        print("  delete", p)
+    if not publish:
+        return False
+    sync.apply(clone, APP)
+    if (clone / "install.sh").exists():
+        (clone / "install.sh").chmod(0o755)
     git = ["git", "-C", str(clone)]
     runner([*git, "add", "-A"])
     code, changed = runner([*git, "status", "--porcelain"])
     if code != 0 or not changed.strip():
         print("public files: already up to date")
         return False
-    for cmd in ([*git, "commit", "-m", "Update README, install script and plain-words pages"], ["git", "-C", str(clone), "-c", "credential.https://github.com.helper=!gh auth git-credential", "push", "origin", "HEAD:main"]):
+    message = f"Source and public files at v{version}" if version else "Source and public files"
+    for cmd in ([*git, "commit", "-m", message], ["git", "-C", str(clone), "-c", "credential.https://github.com.helper=!gh auth git-credential", "push", "origin", "HEAD:main"]):
         code, text = runner(cmd)
         if code != 0:
             raise ReleaseError("syncing the public files failed:\n" + text)
@@ -171,7 +204,10 @@ def sync_public_files(repo: str, runner: Callable[[list[str]], tuple[int, str]],
 
 
 def _run(cmd: list[str]) -> tuple[int, str]:
-    done = subprocess.run(cmd, capture_output=True, text=True, cwd=APP)
+    try:
+        done = subprocess.run(cmd, capture_output=True, text=True, cwd=APP)
+    except OSError as error:  # the program is not installed
+        return 127, f"{cmd[0]}: {error.strerror or error}"
     return done.returncode, (done.stdout + done.stderr).strip()
 
 
@@ -183,12 +219,15 @@ def run(argv: list[str] | None = None, runner: Callable[[list[str]], tuple[int, 
     parser.add_argument("--notes-file", help="the release notes (Markdown) to publish with the release; default: a one-line note")
     parser.add_argument("--publish", action="store_true")
     parser.add_argument("--replace", action="store_true")
+    parser.add_argument("--skip-repo-settings", action="store_true", help="with --publish: do not run `gh repo edit` (it needs Administration rights; CI's token has none)")
+    parser.add_argument("--server-json", default=str(SERVER_JSON), help="attached to the release; default: server.json in the app folder")
     args = parser.parse_args(argv)
     try:
         stale = lock_problem((APP / "pyproject.toml").read_text(encoding="utf-8"), (APP / "uv.lock").read_text(encoding="utf-8"))
         if stale:
             raise ReleaseError(stale)
         version = args.version or version_from_pyproject((APP / "pyproject.toml").read_text(encoding="utf-8"))
+        check_server_json(version, Path(args.server_json))          # before anything is built or published
         notes = None
         if args.notes_file:
             try:
@@ -215,15 +254,17 @@ def run(argv: list[str] | None = None, runner: Callable[[list[str]], tuple[int, 
         print(f"package checks: OK ({wheel.name})")
         # Order matters: a repository with no commit cannot have a release (HTTP 422 "Repository is empty"), so the repo settings and the
         # public files (the first commit) go first, then the release.
-        if args.publish:
+        if args.skip_repo_settings:
+            print(("" if args.publish else "DRY RUN: ") + "repo settings skipped (--skip-repo-settings): no `gh repo edit`")
+        elif args.publish:
             code, text = runner(repo_settings_command(args.repo))
             if code != 0:
                 raise ReleaseError("could not set the repository's description and Issues:\n" + text)
-        sync_public_files(args.repo, runner, workdir=Path(tempfile.mkdtemp(prefix="mdp-public-")), publish=args.publish)
+        sync_public_files(args.repo, runner, workdir=Path(tempfile.mkdtemp(prefix="mdp-public-")), publish=args.publish, version=version)
         exists = False
         if args.publish:
             exists = runner(["gh", "release", "view", tag_for(version), "--repo", args.repo])[0] == 0
-        plan = release_plan(version, args.repo, wheel, exists=exists, replace=args.replace, notes=notes)
+        plan = release_plan(version, args.repo, wheel, exists=exists, replace=args.replace, notes=notes, server_json=Path(args.server_json))
         for cmd in plan:
             print(("" if args.publish else "DRY RUN, would run: ") + " ".join(cmd))
         if args.publish:

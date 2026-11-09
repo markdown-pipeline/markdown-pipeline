@@ -174,6 +174,11 @@ class Handler(BaseHTTPRequestHandler):
 
             acknowledge_announcement()
             return uiapi.background_view(brain)
+        if method == "POST" and path == "/api/update-notice/hide":
+            from . import updatecheck
+
+            updatecheck.dismiss()
+            return {"ok": True}
         if method == "POST" and path == "/api/background/linger-hide":
             from .scheduler import hide_linger_notice
 

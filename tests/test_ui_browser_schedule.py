@@ -171,10 +171,10 @@ def test_the_controls_are_comfortable_targets_and_the_select_has_an_accessible_n
         open_app(page, ui)
         sel = page.locator('select[data-schedule="acme"]')
         expect(sel).to_be_visible()          # wait for the render: bounding_box() is None until the element is laid out
-        assert sel.bounding_box()["height"] >= 40
+        assert sel.evaluate("e => e.getBoundingClientRect().height") >= 40          # evaluate waits for the element itself; bounding_box() was None when a redraw replaced it (MD-220)
         try_now = page.locator('[data-notice="sync_failed"]').get_by_role("button", name="Try now")
         expect(try_now).to_be_visible()
-        assert try_now.bounding_box()["height"] >= 40
+        assert try_now.evaluate("e => e.getBoundingClientRect().height") >= 40
         assert page.get_by_role("combobox", name="Sync automatically (acme)").count() == 1
 
 
@@ -193,10 +193,17 @@ def test_stepping_through_the_choices_with_the_arrow_keys_saves_the_one_you_stop
     with running_ui(one) as ui:
         open_app(page, ui)
         sel = page.locator('select[data-schedule="acme"]')
+        expect(sel).to_be_visible()
+        expect(page.locator("[data-next]")).to_be_visible()                    # the first draw is complete: a later redraw would drop the focus (MD-220)
         sel.focus()
+        expect(sel).to_be_focused()
+        page.clock.pause_at(page.evaluate("Date.now()") + 1000)        # the 400 ms wait is the page's own timer: the test moves it, so a busy machine cannot split the two steps
         for _ in range(2):
             page.keyboard.press("ArrowDown")                 # 1h -> 6h -> daily, quickly
-        expect(page.locator("[data-next]")).to_contain_text("every day", timeout=5000)
+        expect(sel).to_have_value("daily")                  # both steps landed on the same select before the page's timer is moved
+        page.clock.run_for(500)
+        page.clock.resume()
+        expect(page.locator("[data-next]")).to_contain_text("every day", timeout=15000)
     assert load_config(one).get("acme").schedule == "daily"
 
 

@@ -71,6 +71,7 @@ def app_data(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.setenv("APPDATA", str(home / "AppData"))
     monkeypatch.setenv("MDPIPELINE_NO_BACKGROUND_START", "1")
+    monkeypatch.setenv("MDPIPELINE_NO_UPDATE_CHECK", "1")      # MD-222: no test asks PyPI; tests/test_md222_update_check.py turns the check on with a fake
     from mdpipeline import autostart
 
     monkeypatch.setattr(autostart, "_run", lambda *args: None)       # MD-165: no test reaches the real systemctl/loginctl (None = not available)

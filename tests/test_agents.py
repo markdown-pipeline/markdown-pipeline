@@ -2,6 +2,7 @@
 
 The agent CLIs are tiny fake executables on a private PATH: they record their arguments, so the tests see the real command that would run.
 """
+import shlex
 import json
 import os
 import stat
@@ -24,11 +25,16 @@ def bin_dir(tmp_path, monkeypatch):
 def install(bin_dir, name, exit_code=0, stderr=""):
     """Put a fake `claude` or `codex` on the PATH: it appends its argv to calls.jsonl and exits with exit_code."""
     log = bin_dir.parent / "calls.jsonl"
+    body = (f"import json, sys\n"
+            f"open({str(log)!r}, 'a').write(json.dumps([{name!r}] + sys.argv[1:]) + '\\n')\n"
+            f"sys.stderr.write({stderr!r})\nsys.exit({exit_code})\n")
+    if sys.platform == "win32":
+        # npm installs the agents as `<name>.cmd` on Windows; a shebang file without an extension is not runnable there
+        (bin_dir / f"{name}.py").write_text(body)
+        (bin_dir / f"{name}.cmd").write_text(f'@"{sys.executable}" "%~dp0{name}.py" %*\n')
+        return log
     script = bin_dir / name
-    script.write_text(
-        f"#!{sys.executable}\nimport json, sys\n"
-        f"open({str(log)!r}, 'a').write(json.dumps([{name!r}] + sys.argv[1:]) + '\\n')\n"
-        f"sys.stderr.write({stderr!r})\nsys.exit({exit_code})\n")
+    script.write_text(f"#!{sys.executable}\n" + body)
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
     return log
 
@@ -65,7 +71,7 @@ def folder(tmp_path):
 def test_the_exact_change_for_claude_code_is_the_command_and_the_new_file(brain, folder):
     lines = agents.exact_change(brain, "claude_code", str(folder))
     assert lines[0].startswith("claude mcp add --scope user mdpipeline -- ")
-    assert f"--brain {brain.root}" in lines[0] and lines[0].endswith(" mcp")
+    assert f"--brain {shlex.quote(str(brain.root))}" in lines[0] and lines[0].endswith(" mcp")
     assert lines[1] == f"# new file {folder / 'AGENTS.md'}"
 
 
@@ -203,3 +209,105 @@ def test_a_failed_removal_keeps_the_record_so_the_person_can_try_again(bin_dir, 
     install(bin_dir, "claude", exit_code=1, stderr="boom")
     res = agents.disconnect(brain, "claude_code")
     assert res["ok"] is False and "boom" in res["error"] and "claude_code" in agents.connected()
+
+
+# MD-211: on Windows an npm-installed agent is `claude.cmd`: detection (shutil.which) sees it, but CreateProcess cannot start a bare `claude` ------------
+def _fake_run(seen, returncode=0, stderr=""):
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return type("Done", (), {"returncode": returncode, "stdout": "", "stderr": stderr})()
+    return fake_run
+
+
+@pytest.mark.parametrize("agent", ["claude", "codex"])
+def test_the_agent_command_runs_by_the_full_path_that_the_search_found(monkeypatch, agent):
+    seen = {}
+    monkeypatch.setattr(agents.shutil, "which", lambda name: rf"C:\npm\{name}.cmd" if name == agent else None)
+    monkeypatch.setattr(agents.subprocess, "run", _fake_run(seen))
+    assert agents._run([agent, "mcp", "list"]) == ""
+    assert seen["command"] == [rf"C:\npm\{agent}.cmd", "mcp", "list"]
+
+
+def test_a_native_exe_is_started_by_its_path_too_and_the_arguments_are_untouched(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(agents.shutil, "which", lambda name: r"C:\Users\me\.local\bin\claude.exe")
+    monkeypatch.setattr(agents.subprocess, "run", _fake_run(seen))
+    agents._run(["claude", "mcp", "add", "--", "x y", "--brain", "b"])
+    assert seen["command"] == [r"C:\Users\me\.local\bin\claude.exe", "mcp", "add", "--", "x y", "--brain", "b"]
+
+
+def test_an_agent_that_is_not_installed_keeps_the_existing_message(monkeypatch):
+    monkeypatch.setattr(agents.shutil, "which", lambda name: None)
+
+    def missing(command, **kwargs):
+        raise FileNotFoundError(command[0])
+
+    monkeypatch.setattr(agents.subprocess, "run", missing)
+    assert agents._run(["claude", "mcp", "list"]) == "claude isn't installed or isn't on the PATH"
+
+
+def test_a_failure_names_the_agent_not_the_path(monkeypatch):
+    monkeypatch.setattr(agents.shutil, "which", lambda name: r"C:\npm\claude.cmd")
+    monkeypatch.setattr(agents.subprocess, "run", _fake_run({}, returncode=3))
+    assert agents._run(["claude", "mcp", "list"]) == "claude exited with 3"
+
+
+# MD-211 AC7: a `.cmd` agent is run through cmd.exe's batch parsing, so a brain path with a character it can misread must never reach it -------------
+CMD_AGENT = r"C:\npm\claude.cmd"
+UNSAFE_PATHS = [r"C:\Users\me\R&D brain", r"C:\100% notes", r"C:\a^b", r"C:\a|b", r"C:\a(b)", r"C:\a<b>", 'C:\\say "hi"', r"C:\hey!", "C:\\two\nlines"]
+
+
+@pytest.mark.parametrize("path", UNSAFE_PATHS)
+def test_a_cmd_agent_is_never_started_with_a_path_that_cmd_could_misread(monkeypatch, path):
+    ran = []
+    monkeypatch.setattr(agents.shutil, "which", lambda name: CMD_AGENT)
+    monkeypatch.setattr(agents.subprocess, "run", lambda *a, **k: ran.append(a))
+    reason = agents._run(["claude", "mcp", "add", "--", "mdpipeline", "--brain", path])
+    assert ran == [] and reason.startswith("Claude Code can't be connected to this folder: its path has a character Windows can't pass to it (")
+    assert reason.endswith('Move or rename the folder so the path has none of & | < > ^ % ! ( ) ", or choose another.')
+
+
+@pytest.mark.parametrize("path, shown", [(r"C:\R&D", "(&)"), (r"C:\100% a&b", "(&, %)"), ("C:\\two\nlines", "(a line break)"), ("C:\\x\r\n(y)", "((, ), a line break)")])
+def test_the_refusal_names_every_bad_character_found(monkeypatch, path, shown):
+    monkeypatch.setattr(agents.shutil, "which", lambda name: CMD_AGENT)
+    assert shown in agents._run(["claude", "--brain", path]).split("Windows can't pass to it ", 1)[1].split(". ")[0]
+
+
+def test_codex_is_named_Codex(monkeypatch):
+    monkeypatch.setattr(agents.shutil, "which", lambda name: r"C:\npm\codex.cmd")
+    assert agents._run(["codex", "--brain", r"C:\R&D"]).startswith("Codex can't be connected to this folder")
+
+
+@pytest.mark.parametrize("agent_path", [CMD_AGENT, r"C:\npm\codex.BAT"])
+def test_both_batch_suffixes_are_checked(monkeypatch, agent_path):
+    ran = []
+    monkeypatch.setattr(agents.shutil, "which", lambda name: agent_path)
+    monkeypatch.setattr(agents.subprocess, "run", lambda *a, **k: ran.append(a))
+    assert agents._run(["claude", "--brain", r"C:\R&D"]) != "" and ran == []
+
+
+@pytest.mark.parametrize("path", [r"C:\Users\me\my brain", r"C:\Users\me\brain-1_x.y", r"D:\notes'n things"])
+def test_a_cmd_agent_gets_a_plain_path_with_spaces_unchanged(monkeypatch, path):
+    seen = {}
+    monkeypatch.setattr(agents.shutil, "which", lambda name: CMD_AGENT)
+    monkeypatch.setattr(agents.subprocess, "run", _fake_run(seen))
+    assert agents._run(["claude", "mcp", "add", "--brain", path]) == ""
+    assert seen["command"] == [CMD_AGENT, "mcp", "add", "--brain", path]
+
+
+@pytest.mark.parametrize("path", UNSAFE_PATHS)
+def test_a_native_exe_still_gets_any_path_unchanged(monkeypatch, path):
+    seen = {}
+    monkeypatch.setattr(agents.shutil, "which", lambda name: r"C:\Users\me\.local\bin\claude.exe")
+    monkeypatch.setattr(agents.subprocess, "run", _fake_run(seen))
+    assert agents._run(["claude", "--brain", path]) == "" and seen["command"][-1] == path
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe's real parsing: runs on the Windows runner")
+@pytest.mark.parametrize("path", ["my brain", "plain", "it's here"])
+def test_on_windows_a_real_cmd_file_receives_the_arguments_unchanged(tmp_path, monkeypatch, path):
+    echo, out = tmp_path / "echoer.cmd", tmp_path / "args.txt"
+    echo.write_text(f'@echo off\r\n(echo [%~1]& echo [%~2])> "{out}"\r\n', encoding="utf-8")
+    monkeypatch.setattr(agents.shutil, "which", lambda name: str(echo))
+    assert agents._run(["echoer", "first", path]) == ""
+    assert out.read_text().split() == ["[first]", *f"[{path}]".split()]

@@ -169,6 +169,9 @@ def build_parser() -> argparse.ArgumentParser:
     from .usage_events import INSTALL_METHOD
 
     parser.add_argument("--install-method", choices=INSTALL_METHOD.values, help=argparse.SUPPRESS)      # MD-197: set by the MCP Registry entry (server.json), not typed by people
+    from . import __version__ as app_version
+
+    parser.add_argument("--version", "-V", action="version", version=f"mdpipeline {app_version}", help="print the version and exit")     # MD-221
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
     p = sub.add_parser("init", help="choose the folder where your Markdown files go (the \"brain\")",
@@ -327,6 +330,10 @@ def build_parser() -> argparse.ArgumentParser:
                         description="Runs your package manager's upgrade for this install. Your configuration, vault and synced files are not touched; "
                                     "the first plan after an update is what the old version would have planned.")
     up.add_argument("--dry-run", action="store_true", help="only print the command")
+    uc = sub.add_parser("update-check", help="show, or turn on or off, the once-a-day look for a newer version on PyPI",
+                        description="The app asks pypi.org, at most once a day, whether a newer version exists (a plain request that sends nothing about you), "
+                                    "and says so in one line. This is separate from `mdpipeline usage`. You can also set MDPIPELINE_NO_UPDATE_CHECK=1.")
+    uc.add_argument("state", nargs="?", choices=["on", "off"], help="omit to show the current setting")
     sub.add_parser("uninstall", help="stop background sync and show how to remove the app (your files are kept)",
                    description="Turns background sync off, stops the background process and removes its login item, then prints the one command "
                                "that removes the program. Your synced Markdown files, your brains and the app's data folder are not deleted.")
@@ -1387,7 +1394,7 @@ def cmd_update(args) -> int:
             return EXIT_RUNTIME
         print(winupdate.STARTED_TEXT.format(log=log))
         return EXIT_OK
-    print(f"Running: {shown}")
+    print(f"Running: {shown}", flush=True)         # MD-221: before the tool's own output (a pipe would otherwise show it after)
     try:
         code = lifecycle.run_command(command)
     except FileNotFoundError:
@@ -1396,12 +1403,22 @@ def cmd_update(args) -> int:
     if code != 0:
         err(f"Error: the update command failed (exit {code}), so the app was not updated. Nothing else was changed.")
         return EXIT_RUNTIME
-    print(_updated_line())
+    print(_updated_line(), flush=True)
     # MD-204: this process still runs the OLD code, so the restart is a new interpreter: the newly installed code answers, and its words are true
     try:
         subprocess.run([sys.executable, "-m", "mdpipeline", "schedule", "background", "restart"], check=False, timeout=120)
     except (OSError, subprocess.SubprocessError):
         print("Background sync may still be running the old version. To restart it, run: mdpipeline schedule background restart")
+    return EXIT_OK
+
+
+def cmd_update_check(args) -> int:
+    from . import updatecheck
+
+    if args.state:
+        updatecheck.set_enabled(args.state == "on")
+    off_by_env = not updatecheck.enabled() and not updatecheck._read().get("off")
+    print("The once-a-day check for a newer version is " + ("on" if updatecheck.enabled() else "off" + (f" ({updatecheck.ENV_OFF} is set)" if off_by_env else "")) + ".")
     return EXIT_OK
 
 
@@ -1615,8 +1632,8 @@ def cmd_schedule(args) -> int:
     from .config import SCHEDULE_VALUES
     from .service import set_schedule
 
-    brain = resolve_brain(args)
     action = args.schedule_action or "show"
+    brain = None if action == "background" else resolve_brain(args)         # MD-221: turning background sync on/off/restarting needs no brain (`update` runs it from any folder)
     if action == "set":
         try:
             changed = set_schedule(brain, args.pipeline, args.interval, trigger="cli")
@@ -1671,8 +1688,10 @@ def cmd_schedule(args) -> int:
             state = f"on, but it is still running {what} (installed: {__version__}). Restart it: mdpipeline schedule background restart"
     elif background.started_this_run:         # MD-166: this very command started it; never say "not running" about it
         state = "on" if background.wait_until_running() else "on (starting now)"
-    else:
-        state = "on but not running (start it with: mdpipeline background)"
+    elif background.restart_in_progress():       # MD-208: the old process has ended and the new one is waiting for the lock
+        state = f"on, restarting on version {__version__}. A sync in progress finishes first."
+    else:                                        # MD-219: the same one action as the notice above it; `mdpipeline background` would run in this terminal
+        state = "on but not running. Start it again: mdpipeline schedule background restart"
     _print_not_running(brain, now, "cli")
     print(f"Background sync: {state}" + ("" if state.startswith(("on (version", "on, but", "on, restarting")) else f" (intervals: {', '.join(SCHEDULE_VALUES)})"))
     if state != "off":
@@ -1784,6 +1803,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _main(args)
     finally:
+        from . import updatecheck
+
+        updatecheck.after_command(args.command)           # MD-222: never raises; stderr only; nothing for mcp
         if starts_usage_helper(args.command):
             from . import usage
 
@@ -1850,6 +1872,8 @@ def _main(args) -> int:
             return EXIT_OK if record_install_method(args.method) else EXIT_USAGE
         if args.command == "update":
             return cmd_update(args)
+        if args.command == "update-check":
+            return cmd_update_check(args)
         if args.command == "uninstall":
             return cmd_uninstall(args)
         if args.command == "connect":

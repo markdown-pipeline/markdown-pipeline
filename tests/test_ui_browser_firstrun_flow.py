@@ -1,6 +1,7 @@
 """MD-159 in a real browser: Projects -> Where should your files go? -> Review (confirmation only) -> Ready, for the three paths."""
 import json
 import re
+import time
 
 import pytest
 
@@ -337,7 +338,13 @@ def test_the_steps_report_scope_then_target_with_dest_changed_then_preview_and_n
         page.get_by_role("button", name="Use this folder").click()
         expect(page.locator("#fr-summary")).to_be_visible()
         wait_for("onboarding_step_completed", 3)
-        entries = queued("onboarding_step_viewed", "onboarding_step_completed")
+        deadline = time.monotonic() + 15                                                    # the page reports in the background: wait for the viewed and completed events asserted on, not only for a count of three
+        while time.monotonic() < deadline:
+            entries = queued("onboarding_step_viewed", "onboarding_step_completed")
+            seen = lambda kind: {own(e)["step"] for e in entries if e["event"] == kind}
+            if {"choose_scope", "choose_target", "preview"} <= seen("onboarding_step_viewed") and {"choose_scope", "choose_target"} <= seen("onboarding_step_completed"):
+                break
+            time.sleep(0.05)
     viewed = [own(e)["step"] for e in entries if e["event"] == "onboarding_step_viewed"]
     done = {own(e)["step"]: own(e) for e in entries if e["event"] == "onboarding_step_completed"}
     assert viewed.index("choose_scope") < viewed.index("choose_target") < viewed.index("preview")

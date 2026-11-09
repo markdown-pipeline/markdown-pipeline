@@ -1,4 +1,6 @@
 """MD-115 in a real browser: the consent card (AC1) and Settings → Privacy & usage (AC3, AC5)."""
+import time
+
 import pytest
 
 playwright_sync = pytest.importorskip("playwright.sync_api")
@@ -164,6 +166,9 @@ def test_see_exactly_what_we_send_opens_the_two_lists_an_example_and_the_same_tw
         expect(drawer.get_by_role("button", name="Share usage")).to_be_visible()
         expect(drawer.get_by_role("button", name="Don't share")).to_be_visible()
         drawer.get_by_role("button", name="Don't share").click()
+        deadline = time.monotonic() + 15                                                    # the click reports in the background: wait for the stored answer, not for the next line
+        while UsageStore().consent != "decline" and time.monotonic() < deadline:
+            time.sleep(0.05)
     assert UsageStore().consent == "decline"
 
 

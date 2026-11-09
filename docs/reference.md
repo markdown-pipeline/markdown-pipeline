@@ -37,7 +37,7 @@ The rest of this page is the reference for the command line, the settings and th
 ## Platforms and network rule
 
 - Platforms: **Linux is the tested platform** for this release. macOS has the same code paths but is untested; Windows works only through WSL 2 (the app needs POSIX file locking). Python 3.12+ (the installer brings its own) and [uv](https://docs.astral.sh/uv/), or a plain Python 3.12 venv (below).
-- Network rule: Network calls come only from the sources and destinations you connect (your Atlassian site; api.github.com and the GitHub sign-in pages if you use a GitHub repository), and, only if you chose "Share usage" or press Send, from usage data to us.i.posthog.com. With folder sources, a local folder and sharing off, the app makes zero network calls. Everything is https; the window listens on 127.0.0.1 only.
+- Network rule: Network calls come only from the sources and destinations you connect (your Atlassian site; api.github.com and the GitHub sign-in pages if you use a GitHub repository), and, only if you chose "Share usage" or press Send, from usage data to us.i.posthog.com, plus a once-a-day look for a newer version at pypi.org (a plain request that sends nothing about you; turn it off with MDPIPELINE_NO_UPDATE_CHECK=1 or `mdpipeline update-check off`). With folder sources, a local folder, sharing off and that check off, the app makes zero network calls. Everything is https; the window listens on 127.0.0.1 only.
 
 ## Install
 
@@ -630,7 +630,7 @@ never shown or exported (a secret cannot be removed while a pipeline uses it). T
 
 ### Network rule
 Network calls come only from source connectors and the GitHub target, only over **https**, and only to the configured GitHub API host
-(`api.github.com`). A local-only brain with folder sources makes zero network calls (a test proves it). The token is sent only in the
+(`api.github.com`). A local-only brain with folder sources makes zero network calls, apart from the once-a-day version check when it is on (a test proves it with the check off). The token is sent only in the
 `Authorization` header and never appears in the repository, the state, the log, a backup, the CLI output, the UI or the MCP responses.
 
 ### Troubleshooting

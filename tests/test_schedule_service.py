@@ -179,4 +179,4 @@ def test_the_cli_says_when_background_sync_is_on_but_not_running(synced, capsys)
 
     main(["--brain", str(synced.root), "schedule"])
     out = capsys.readouterr().out
-    assert "on but not running" in out and "mdpipeline background" in out
+    assert "on but not running" in out and "mdpipeline schedule background restart" in out      # MD-219: the one start action

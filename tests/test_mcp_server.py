@@ -146,3 +146,45 @@ def test_the_server_prints_nothing_but_protocol_on_stdout_and_needs_no_network(p
 
     server = build_server(populated)
     assert server.name == "mdpipeline"
+
+
+# --- MD-213: the tools tell the agent exactly what they do ---------------------------------------------------------------------------------------
+def _tools(brain):
+    async def fn(c):
+        return (await c.list_tools()).tools
+    return session(brain, fn)
+
+
+def test_every_parameter_of_every_tool_has_a_description(brain):
+    tools = _tools(brain)
+    assert len(tools) == 6
+    missing = [f"{t.name}.{name}" for t in tools for name, spec in t.input_schema.get("properties", {}).items() if not spec.get("description")]
+    assert missing == []
+
+
+def test_each_tool_says_whether_it_is_read_only(brain):
+    hints = {t.name: t.annotations.read_only_hint for t in _tools(brain)}
+    assert hints == {"search": True, "read": True, "list": True, "sync_status": True, "recent_changes": True, "sync": False}
+
+
+def test_each_tool_says_when_to_use_a_sibling_instead(brain):
+    names = {t.name for t in _tools(brain)}
+    for t in _tools(brain):
+        siblings_named = [n for n in names - {t.name} if f"`{n}`" in t.description]
+        assert siblings_named, f"{t.name} does not point to a sibling tool"
+
+
+def test_tool_names_are_unchanged(brain):
+    assert sorted(t.name for t in _tools(brain)) == ["list", "read", "recent_changes", "search", "sync", "sync_status"]
+
+
+def test_every_tool_defines_the_brain_in_the_same_words(brain):          # MD-213, marketing
+    words = "the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools)"
+    assert [t.name for t in _tools(brain) if words not in t.description] == []
+
+
+def test_sync_names_its_sources_and_who_can_approve_a_blocked_sync(brain):
+    sync = next(t for t in _tools(brain) if t.name == "sync").description
+    assert "from its sources (such as Jira or a local folder) into its output folder" in sync
+    assert "only the person can approve it, in the app or with the `mdpipeline` command" in sync
+    assert "pauses a sync that would delete or overwrite a large share of a pipeline's files" in sync

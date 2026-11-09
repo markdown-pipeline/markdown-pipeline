@@ -66,6 +66,17 @@ def restart_pending(now: float | None = None) -> bool:
     return isinstance(at, (int, float)) and 0 <= now - at < RESTART_PENDING_SECONDS and is_outdated()
 
 
+def restart_in_progress(now: float | None = None) -> bool:
+    """MD-208: a restart was requested less than ``RESTART_PENDING_SECONDS`` ago and, for the moment, no process holds the lock (the old one has ended,
+    the new one is waiting for it). Status says "restarting" then, never "not running". Past the window, a replacement that did not come shows as down."""
+    try:
+        at = json.loads(_restart_marker_path().read_text(encoding="utf-8")).get("at")
+    except (OSError, ValueError):
+        return False
+    now = time.time() if now is None else now
+    return isinstance(at, (int, float)) and 0 <= now - at < RESTART_PENDING_SECONDS and not is_running()
+
+
 def record_heartbeat(now: float | None = None) -> None:
     """MD-212: the process is alive and ticking (the clock for "background isn't running"). Housekeeping: never breaks a tick."""
     from .schedulestore import SchedulerStore
@@ -84,7 +95,7 @@ def not_running(now: float | None = None) -> bool:
     from .schedulestore import SchedulerStore
 
     state = SchedulerStore().read()["background"]
-    if not state.get("enabled", True) or not state.get("announced") or is_running():
+    if not state.get("enabled", True) or not state.get("announced") or is_running() or restart_in_progress(now):
         return False
     last = state.get("last_tick_at")
     now = time.time() if now is None else now

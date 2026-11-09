@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Callable
+from typing import Annotated, Callable
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
+from pydantic import Field
 from mcp.server.mcpserver.exceptions import ToolError
 
 from . import __version__, changes, usage
@@ -28,6 +30,13 @@ INSTRUCTIONS = (
     "provenance (source pipeline, folder label and source path) so answers can cite their source. "
     "Retrieval only: you write the answer yourself."
 )
+
+
+# MD-213: what each tool changes, for the agent and for directory listings. The three that read files only read the brain; none of them reaches the network.
+READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
+SYNC_EFFECTS = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)      # writes files inside the brain, deletes only what a source deleted
+
+PIPELINE_ARG = Annotated[str | None, Field(description="Name of one pipeline, exactly as `list`/`sync_status` show it. Omit it to cover every pipeline.")]
 
 
 # MD-196 (registry R1): the words an agent shows when the app has not been set up yet. One next step. Marketing reviews them before release.
@@ -80,11 +89,17 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
         return {"status": "setup_needed", "message": str(exc)}
 
 
-    @server.tool(name="search", description="Keyword/full-text search over the brain's Markdown (the files its pipelines wrote, plus raw/ and wiki/). "
-                 "Returns ranked files with matching passages and each file's provenance. Covers every pipeline target that has local files: "
-                 "files of other targets have paths like '@pipeline/raw/...' and a 'target' label. "
-                 "Use quotes for an exact phrase. path_prefix (e.g. 'raw/projects/biz') narrows the search.")
-    def search_tool(query: str, path_prefix: str | None = None, limit: int = 10) -> dict:
+    @server.tool(name="search", annotations=READ_ONLY, description="Keyword/full-text search over the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools): the files its pipelines wrote, plus raw/ and wiki/. "
+                 "Read-only: it changes nothing. Returns {results: [...]} ranked best first; each result has the file path, a score, up to 3 matching passages "
+                 "(line number and text) and the file's provenance. Covers every pipeline target that has local files: files of other targets have paths like "
+                 "'@pipeline/raw/...' and a 'target' label. Use quotes in the query for an exact phrase. An empty query is an error. "
+                 "Use search when you do not know which file holds the answer; use `read` when you already have the path, and `list` to see what exists. "
+                 "Use `recent_changes`, not search, to ask what changed.")
+    def search_tool(
+        query: Annotated[str, Field(description="Words to look for, as plain text. Put an exact phrase in double quotes. Must not be empty.")],
+        path_prefix: Annotated[str | None, Field(description="Only search under this folder, relative to the brain, e.g. 'raw/projects/biz' or '@pipeline/raw/docs'. Omit it to search everything.")] = None,
+        limit: Annotated[int, Field(description="How many files to return, best first. Default 10, at most 50 (a larger number is lowered to 50).")] = 10,
+    ) -> dict:
         try:
             brain = provide()
         except NeedsSetup as exc:
@@ -97,9 +112,13 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
         except QueryError as exc:
             raise ToolError(str(exc)) from exc
 
-    @server.tool(name="read", description="Read one Markdown file of the brain (path relative to the brain, "
-                 "e.g. 'raw/projects/biz/pricing.md'). Returns the content and its parsed provenance.")
-    def read_tool(path: str) -> dict:
+    @server.tool(name="read", annotations=READ_ONLY, description="Read one Markdown file of the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools). Read-only. Returns the whole file: {path, content, provenance, size} "
+                 "(provenance is the parsed source metadata, null when the file has none; size is in bytes). Errors (ToolError) for a path that does not exist, "
+                 "is a folder, is not a Markdown file, contains '..', is hidden or the app's own folder, or is outside the files a pipeline wrote and raw/ and wiki/. "
+                 "Use read when you have the path (from `search` or `list`); it does not search.")
+    def read_tool(
+        path: Annotated[str, Field(description="Path of one .md file, relative to the brain, e.g. 'raw/projects/biz/pricing.md'. For a pipeline target that is not the brain's own folder use '@pipeline/raw/...' as `search` and `list` print it.")],
+    ) -> dict:
         try:
             brain = provide()
         except NeedsSetup as exc:
@@ -112,9 +131,13 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
         except QueryError as exc:
             raise ToolError(str(exc)) from exc
 
-    @server.tool(name="list", description="List the folders and Markdown files under path_prefix "
-                 "(default: the top level: the output folders, raw/ and wiki/), with a provenance summary per file.")
-    def list_tool(path_prefix: str | None = None) -> dict:
+    @server.tool(name="list", annotations=READ_ONLY, description="List what is in the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools), one folder level at a time. Read-only. Returns {path, folders, files}: each folder with its "
+                 "count of Markdown files, each Markdown file with a provenance summary, sorted by name (at the top level: the output folders, raw/, wiki/). "
+                 "At the top level it may add not_searchable: targets with no local files. Errors (ToolError) for a folder that does not exist or is not readable. "
+                 "Use list to find out what exists and where; use `search` to find content and `read` to open a file.")
+    def list_tool(
+        path_prefix: Annotated[str | None, Field(description="The folder to list, relative to the brain, e.g. 'raw/projects' or '@pipeline/raw'. Omit it for the top level.")] = None,
+    ) -> dict:
         try:
             brain = provide()
         except NeedsSetup as exc:
@@ -127,11 +150,12 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
         except QueryError as exc:
             raise ToolError(str(exc)) from exc
 
-    @server.tool(name="sync_status", description="How fresh is the brain? Per pipeline: status, last run (time, result, counts), "
-                 "conflicts, big-change guard state and age since the last successful sync, plus the overall brain age. Every pipeline and the top level carry "
-                 "last_success_at (ISO 8601, UTC). When background sync is not running the reply has stale: true, stale_reason and message_for_user: "
-                 "quote message_for_user to the person as is, because their files may be out of date.")
-    def sync_status_tool(pipeline: str | None = None) -> dict:
+    @server.tool(name="sync_status", annotations=READ_ONLY, description="How fresh is the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools)? Read-only: it never syncs and changes nothing. Per pipeline: status, last run "
+                 "(time, result, counts), conflicts, big-change guard (it pauses a sync that would delete or overwrite a large share of a pipeline's files until the person approves) state and age since the last successful sync, plus the overall brain age. Every pipeline and the top level carry "
+                 "last_success_at (ISO 8601, UTC). A pipeline name that does not exist gives an empty list of pipelines. When background sync is not running the reply has stale: true, "
+                 "stale_reason and message_for_user: quote message_for_user to the person as is, because their files may be out of date. "
+                 "Use sync_status to check freshness; use `recent_changes` to see which files changed, and `sync` only to refresh now.")
+    def sync_status_tool(pipeline: PIPELINE_ARG = None) -> dict:
         try:
             brain = provide()
         except NeedsSetup as exc:
@@ -144,10 +168,15 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
                 p["last_run"] = {k: v for k, v in p["last_run"].items() if k != "files"}
         return data
 
-    @server.tool(name="recent_changes", description="What changed in the brain's files? The files created, changed or deleted by successful syncs since a time "
-                 "(ISO date or time, default: the last 24 hours), merged per file, with counts. Use it for 'what changed since yesterday?'. "
-                 "pipeline narrows it to one pipeline.")
-    def recent_changes_tool(since: str | None = None, pipeline: str | None = None, limit: int = 200) -> dict:
+    @server.tool(name="recent_changes", annotations=READ_ONLY, description="What changed in the files of the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools)? Read-only. The files created, changed or deleted by successful syncs "
+                 "since a time (default: the last 24 hours), merged to one row per file, oldest change first, with counts and a text summary. At most `limit` rows are in items; "
+                 "truncated: true says there were more (counts still cover all of them). A time that cannot be read, or a pipeline that does not exist, is an error (ToolError). "
+                 "Use it for 'what changed since yesterday?'; use `sync_status` for how fresh the brain is, and `search` to find content.")
+    def recent_changes_tool(
+        since: Annotated[str | None, Field(description="Start of the window: an ISO date or time such as '2026-10-11' or '2026-10-11T08:00:00Z' (no time zone means UTC). Omit it for the last 24 hours.")] = None,
+        pipeline: PIPELINE_ARG = None,
+        limit: Annotated[int, Field(description="Most rows to return in items. Default 200. Rows past it are dropped and truncated is true.")] = 200,
+    ) -> dict:
         try:
             brain = provide()
         except NeedsSetup as exc:
@@ -162,10 +191,13 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
 
-    @server.tool(name="sync", description="Refresh the brain: sync one pipeline (or all pipelines when none is given) from its "
-                 "source folders into the output folder. If the big-change guard blocks the sync, nothing is written and the result is "
-                 "'blocked': only the owner can approve it in the UI or CLI. This tool cannot approve or force.")
-    def sync_tool(pipeline: str | None = None) -> dict:
+    @server.tool(name="sync", annotations=SYNC_EFFECTS, description="Refresh the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools) now: sync one pipeline (or all pipelines when none is given) from its sources (such as Jira or a local folder) into its "
+                 "output folder. This writes files inside the brain (new and changed Markdown; files that a source deleted are deleted too) and the activity log. "
+                 "Returns {results: [...]}, one per pipeline, with the counts of what changed. If the "
+                 "big-change guard (it pauses a sync that would delete or overwrite a large share of a pipeline's files until the person approves) blocks the sync, nothing is written and the result is 'blocked': "
+                 "only the person can approve it, in the app or with the `mdpipeline` command. This tool cannot approve or force. A pipeline that does not exist is an error (ToolError). "
+                 "Use sync only when the person asked you to refresh or the files are stale; to just check freshness use `sync_status`.")
+    def sync_tool(pipeline: PIPELINE_ARG = None) -> dict:
         try:
             brain = provide()
         except NeedsSetup as exc:

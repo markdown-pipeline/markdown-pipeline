@@ -142,6 +142,7 @@ ANSWER = Enum(("yes", "partly", "no", "other",                                  
 NOTICE_KIND = Enum(("sync_failed", "source_missing", "stale", "guard_blocked", "vault_locked", "vault_unsafe", "linger", "setup_mode", "background_not_running"))
 NOTICE_SURFACE = Enum(("ready", "home", "settings", "cli"))                       # MD-168 M4: where the linger line was shown (a screen name, never content)
 LINGER_KIND = Enum(("linger",))
+UPDATE_SURFACE = Enum(("cli", "app"))                                                # MD-222: where the "newer version" notice was shown
 YES_NO_UNKNOWN = Enum(("yes", "no", "unknown"))
 SECRET_STORE = Enum(("keychain", "file"))
 ACTED_KIND = Enum(("background_not_running",))                                  # MD-212: the notices a person can act on
@@ -269,6 +270,11 @@ EVENTS: dict[str, Event] = {
                           ("ui", "engine", "cli", "mcp"), {"kind": NOTICE_KIND, "surface": NOTICE_SURFACE}, {"kind": "linger", "surface": "home"}),
     "notice_acted": Event("The person acted on a notice: used 'Start sync again' in the app or ran the restart command while the 'background sync isn't running' notice was up (MD-212, H-BOOT-2: shown -> acted -> cleared); a fixed kind and door, nothing else",
                           ("ui", "cli"), {"kind": ACTED_KIND, "via": ACTED_VIA}, {"kind": "background_not_running", "via": "app"}),
+    "update_notice_shown": Event("Do releases reach people (MD-222, H-UPD-2): a newer version was shown, with the two version numbers and where (command line or app page), at most once a day per place",
+                                 ("cli", "ui"), {"from_version": Version(), "to_version": Version(), "surface": UPDATE_SURFACE},
+                                 {"from_version": "0.1.17", "to_version": "0.1.19", "surface": "cli"}),
+    "update_notice_acted": Event("Do releases reach people (MD-222, H-UPD-2): the first run on the version a notice named, with the two version numbers",
+                                 ("cli", "ui"), {"from_version": Version(), "to_version": Version()}, {"from_version": "0.1.17", "to_version": "0.1.19"}),
     "notice_hidden": Event("The person pressed Hide on the linger line on Home (MD-168, H-LINGER-1); a fixed kind and screen, nothing else",
                            ("ui",), {"kind": LINGER_KIND, "surface": NOTICE_SURFACE}, {"kind": "linger", "surface": "home"}),
     "app_updated": Event("Update adoption; when `update` (a script install) downloaded a release asset, which one (MD-205)", ("ui", "cli"),

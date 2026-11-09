@@ -137,3 +137,12 @@ def test_recent_is_capped_and_says_so(brain):
     _run(brain, "2026-10-12T08:00:00.000000Z", "p", [_f("create", f"raw/p/f{i}.md") for i in range(5)])
     out = changes.recent(brain, since="2026-10-12T00:00:00Z", limit=2)
     assert len(out["items"]) == 2 and out["truncated"] is True and out["counts"]["new"] == 5
+
+
+def test_recent_lists_the_oldest_change_first_and_says_when_the_limit_cut_rows(brain):          # MD-213: what the tool description promises
+    _run(brain, "2026-10-12T08:00:00.000000Z", "p", [_f("create", "raw/p/first.md")])
+    _run(brain, "2026-10-12T09:00:00.000000Z", "p", [_f("create", "raw/p/second.md")])
+    _run(brain, "2026-10-12T10:00:00.000000Z", "p", [_f("create", "raw/p/third.md")])
+    out = changes.recent(brain, since="2026-10-12T00:00:00Z", limit=2)
+    assert [i["path"] for i in out["items"]] == ["raw/p/first.md", "raw/p/second.md"]
+    assert out["truncated"] is True and out["counts"]["new"] == 3

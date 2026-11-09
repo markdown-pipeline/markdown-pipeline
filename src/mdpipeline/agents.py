@@ -133,19 +133,52 @@ def _save(data: dict) -> None:
     os.replace(tmp, path)
 
 
+BATCH_SUFFIXES = (".cmd", ".bat")
+BATCH_UNSAFE = set('&|<>^%!()"\r\n\0')       # cmd.exe reads these inside a batch file's command line; anything else (spaces included) passes through quoted
+
+
+DISPLAY_NAME = {"claude": "Claude Code", "codex": "Codex"}
+BATCH_UNSAFE_SHOWN = '& | < > ^ % ! ( ) "'
+
+
+def _batch_refusal(name: str, found: str | None, args: list[str]) -> str:
+    """MD-211 AC7: a ``.cmd``/``.bat`` agent is run through cmd.exe's own parsing, which can split or misread a character in a chosen path ("R&D", "100%").
+    So nothing runs when an argument has one: the person is told in one line which characters, and no partial command ever starts."""
+    if not (found and found.lower().endswith(BATCH_SUFFIXES)):
+        return ""
+    seen = {c for arg in args for c in arg if c in BATCH_UNSAFE}
+    if not seen:
+        return ""
+    shown = [c for c in BATCH_UNSAFE_SHOWN.split() if c in seen]
+    if seen & set("\r\n"):
+        shown.append("a line break")
+    if "\0" in seen:
+        shown.append("a null character")
+    return (f"{DISPLAY_NAME.get(name, name)} can't be connected to this folder: its path has a character Windows can't pass to it ({', '.join(shown)}). "
+            f"Move or rename the folder so the path has none of {BATCH_UNSAFE_SHOWN}, or choose another.")
+
+
 def _run(command: list[str]) -> str:
-    """Run an agent command; "" when it worked, otherwise the reason in the agent's own words."""
+    """Run an agent command; "" when it worked, otherwise the reason in the agent's own words.
+
+    MD-211: it is started by the full path that ``shutil.which`` found (the same search that detected it), so detection and start cannot disagree: on
+    Windows an npm install is ``claude.cmd``, which CreateProcess cannot start by the bare name ``claude``. Messages still name the agent, not the path."""
+    name = command[0]
+    found = shutil.which(name)
+    refusal = _batch_refusal(name, found, command[1:])
+    if refusal:
+        return refusal
     try:
-        done = subprocess.run(command, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_S, stdin=subprocess.DEVNULL)
+        done = subprocess.run([found, *command[1:]] if found else command, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_S, stdin=subprocess.DEVNULL)
     except FileNotFoundError:
-        return f"{command[0]} isn't installed or isn't on the PATH"
+        return f"{name} isn't installed or isn't on the PATH"
     except subprocess.TimeoutExpired:
-        return f"{command[0]} didn't answer within {COMMAND_TIMEOUT_S} seconds"
+        return f"{name} didn't answer within {COMMAND_TIMEOUT_S} seconds"
     except OSError as exc:
         return str(exc)
     if done.returncode == 0:
         return ""
-    return (done.stderr or done.stdout or f"{command[0]} exited with {done.returncode}").strip()[:300]
+    return (done.stderr or done.stdout or f"{name} exited with {done.returncode}").strip()[:300]
 
 
 def _place_file(brain: Brain, agent: str, folder: str, how: str | None, previous: dict) -> tuple[dict | None, dict | None]:

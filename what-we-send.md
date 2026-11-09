@@ -42,6 +42,8 @@ you open the app. We do not build a profile of a person.
 | A sync skips a file because its front matter has a mistake | `front_matter_warning` | how many files were skipped in that run (a number). Never the file names, paths or lines |
 | A sync waits for your OK | `guard_triggered`, `guard_resolved` | that it happened, and whether you approved or cancelled |
 | A notice appears | `notice_shown` | which kind (failed, stale...). When your agent starts the MCP server before the app is set up: that this happened, at most once each time the agent starts it. For the one-line reminder that background sync stops when you log out of a Linux server: that it was shown, and on which screen (first-run Ready, Home, Settings or the command line), at most once a day per screen. For the notice that background sync isn't running: that it was shown, and on which screen (Home, Settings or the command line), once each time background sync stops |
+| A newer version is shown | `update_notice_shown` | the version you run, the newer version, and where it was shown (command line or app), at most once a day for each. Nothing else |
+| You run the newer version | `update_notice_acted` | the version you ran before and the version the notice named. Nothing else |
 | You hide that reminder | `notice_hidden` | that you pressed Hide on Home. Nothing else |
 | You act on a notice | `notice_acted` | that you used "Start sync again" in the app, or ran the restart command in a terminal, while the "background sync isn't running" notice was showing. Nothing else |
 | You change the sync interval | `schedule_changed` | the old and the new interval |
@@ -74,7 +76,19 @@ failed batch stays queued. The app never waits for the network.
 - `mdpipeline usage log` (or Settings → Privacy & usage) shows the last 50 events sent, exactly as sent.
 - `mdpipeline usage off` stops it at once and drops anything waiting.
 
-Apart from this, the app makes network calls only to the services you connect: your Atlassian site (we only read; this includes one call that lists the
+## The check for a newer version (not usage data)
+
+Once a day at most, the app asks `pypi.org` (`https://pypi.org/pypi/mdpipeline/json`) which version of Markdown Pipeline is the latest, and tells you in one
+line (on the command line, on stderr) and a small notice in the app when there is a newer one, with the command that updates your install. It is a plain
+`GET`: **no install ID, no query string and no body**, only two standard headers: `Accept: application/json` and Python's default `User-Agent`. It sends nothing about you
+or your files. If you are offline, it fails silently.
+
+- **It runs whatever you chose about sharing usage.** `mdpipeline usage off` does **not** stop it, because it sends no usage data.
+- To turn it off: set the environment variable `MDPIPELINE_NO_UPDATE_CHECK=1`, or run `mdpipeline update-check off` (`on` turns it back on; no argument shows the setting).
+- It is skipped when the `CI` environment variable is set, and the command-line line never appears for `mdpipeline mcp` or the app window.
+- Two usage events say whether the notice reached you: `update_notice_shown` and `update_notice_acted` (see the table above). They are sent only if you chose to share.
+
+Apart from this and the check above, the app makes network calls only to the services you connect: your Atlassian site (we only read; this includes one call that lists the
 projects your account can read, so you can tick them instead of typing keys; the names stay on your computer), and `api.github.com` (plus the two
 GitHub sign-in addresses) if you use a GitHub repository as the destination. Everything is https. The app's window listens on your own
 computer only (`127.0.0.1`).

@@ -35,12 +35,35 @@ def trees(tmp_path):
     return private, public
 
 
-def test_the_public_tree_gets_every_tracked_file_except_the_windows_workflow(trees):
+def test_the_public_tree_gets_every_tracked_file_except_the_workflows(trees):
     private, public = trees
     sync.apply(public, private)
-    assert (public / "src/a.py").read_text() == "A" and (public / "glama.json").exists() and (public / ".github/workflows/linux-tests.yml").exists()
-    assert not (public / ".github/workflows/windows-tests.yml").exists()
-    assert (public / ".github/workflows/publish-registry.yml").read_text() == "y"      # MD-199: public with v0.1.15, product's go 11172
+    assert (public / "src/a.py").read_text() == "A" and (public / "glama.json").exists()
+    assert not (public / ".github").exists()          # DEV-11: the public repo's workflows are its own; the private ones never go public
+
+
+def test_a_public_only_workflow_survives_and_a_private_one_is_never_written(trees):
+    private, public = trees
+    (public / ".github/workflows").mkdir(parents=True)
+    (public / ".github/workflows/verify-channels.yml").write_text("public only")
+    git(public, "add", "-A")
+    write, delete = sync.apply(public, private)
+    assert (public / ".github/workflows/verify-channels.yml").read_text() == "public only"
+    assert not any(p.startswith(".github/workflows/") for p in [*write, *delete])
+    assert sorted(p.name for p in (public / ".github/workflows").iterdir()) == ["verify-channels.yml"]
+
+
+def test_a_stale_private_workflow_copy_in_the_public_repo_is_left_alone_too(trees):
+    private, public = trees
+    (public / ".github/workflows").mkdir(parents=True)
+    (public / ".github/workflows/windows-tests.yml").write_text("stale")
+    git(public, "add", "-A")
+    sync.apply(public, private)
+    assert (public / ".github/workflows/windows-tests.yml").read_text() == "stale"        # never written, never deleted: removing it is a by-hand job
+
+
+def test_only_the_windows_installer_is_withheld_now():
+    assert sync.WITHHELD == {"scripts/install.ps1"} and sync.NOT_SYNCED_PREFIXES == (".github/workflows/",)
 
 
 def test_the_three_root_copies_are_made(trees):

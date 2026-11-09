@@ -407,7 +407,7 @@ function renderHome() {
       </li>`;
     }).join("")}</ul>${ps.some((p) => p.last_changes) && agentConnected() ? `<p class="muted small ask-hint">Your connected agent can answer this. Ask it: what changed since yesterday</p>` : ""}`;
   }
-  $("main").innerHTML = `${renderNeedsYou()}${renderAnnouncement()}${renderLingerNotice()}${renderNotRunning()}${renderNextSync()}${renderConsentCard()}${fbPrompt()}
+  $("main").innerHTML = `${renderNeedsYou()}${renderAnnouncement()}${renderUpdateNotice()}${renderLingerNotice()}${renderNotRunning()}${renderNextSync()}${renderConsentCard()}${fbPrompt()}
     <div class="bar"><h1 class="grow" tabindex="-1">Pipelines</h1>
       ${ps.length ? `<button class="btn" data-act="sync-all" ${anySync || !active ? "disabled" : ""}>Sync all${ps.some((p) => p.paused) ? ` <span class="muted small">(${active} active)</span>` : ""}</button>
       <button class="btn primary" data-act="new">+ New pipeline</button>` : ""}
@@ -544,6 +544,17 @@ function renderAnnouncement() {
     <button class="btn sm ghost" data-act="bg-ok">OK</button></div>`;
 }
 
+/* MD-222: a newer version is on PyPI. Plain facts, the one command for this install, a link to the release notes, and Hide (until the next version).
+   The server reports the notice at most once a day; the page only draws it. */
+function renderUpdateNotice() {
+  const n = S.state && S.state.update_notice;
+  if (!n) return "";
+  return `<p class="muted small" id="update-notice" role="status">${esc(n.text)} <code>${esc(n.command)}</code>
+    <button class="btn sm ghost" data-act="update-copy" data-cmd="${esc(n.command)}">Copy</button>
+    <a href="${esc(n.whats_new)}" target="_blank" rel="noopener">What's new</a>
+    <button class="btn sm ghost" data-act="update-hide">Hide</button></p>`;
+}
+
 /* MD-166: on a server (no desktop session) with linger off, background sync stops at logout and waits for a login after a reboot. Say so on
    Home, with the commands, until linger is on or the person hides it. The app never runs the command. */
 function renderLingerNotice() {
@@ -563,7 +574,7 @@ function renderNotRunning() {
     <button class="btn sm" disabled>Starting…</button></p>`;
   }
   if (S.bgStart === "failed") {
-    return `<p class="muted small notrunning" id="bg-not-running" role="alert">Background sync did not start. Open a terminal and run <code>${CLI} background</code>, or try again.
+    return `<p class="muted small notrunning" id="bg-not-running" role="alert">Background sync did not start. Try again, or open a terminal and run <code>${CLI} schedule background restart</code>.
     <button class="btn sm" data-act="bg-set" data-on="true">Try again</button></p>`;
   }
   if (bg.not_running) return notRunningNotice("home");                      // MD-212: no process and no heartbeat within the grace: say what it means for the files
@@ -1800,6 +1811,8 @@ document.addEventListener("click", async (ev) => {
     case "usage-choose": return usageChoose(el.dataset.choice);
     case "bg-set": return setBackground(el.dataset.on === "true");
     case "bg-off": await setBackground(false); return focusSoon("main h1");
+    case "update-copy": return copy(el.dataset.cmd, "command");
+    case "update-hide": { const r = await api("POST", "/api/update-notice/hide", {}); if (r.ok) { S.state.update_notice = null; render(); } return undefined; }
     case "linger-hide": { const r = await api("POST", "/api/background/linger-hide", {}); if (r.ok) S.state.background = r.data; render(); return undefined; }
     case "bg-ok": { const r = await api("POST", "/api/background/ack", {}); if (r.ok) S.state.background = r.data; render(); return focusSoon("main h1"); }
     case "bg-change": { const r = await api("POST", "/api/background/ack", {}); if (r.ok) S.state.background = r.data; render(); return focusSoon("select[data-schedule]"); }

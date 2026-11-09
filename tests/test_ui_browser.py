@@ -434,11 +434,12 @@ def test_connect_panel_copy_button_copies_the_snippet(browser, two):
         expect(pg.locator("#snip")).to_contain_text("claude mcp add")
         pg.get_by_role("button", name="Copy").click()
         expect(pg.locator("#toast")).to_contain_text("Copied MCP config")
+        pg.wait_for_function("navigator.clipboard.readText().then(t => t.startsWith('claude mcp add mdpipeline'))", timeout=15000)       # the write finishes after the toast
         copied = pg.evaluate("navigator.clipboard.readText()")
         assert copied.startswith("claude mcp add mdpipeline") and str(two.root) in copied
         pg.get_by_role("button", name="Codex", exact=True).click()
         pg.get_by_role("button", name="Copy").click()
-        assert "[mcp_servers.mdpipeline]" in pg.evaluate("navigator.clipboard.readText()")
+        pg.wait_for_function("navigator.clipboard.readText().then(t => t.includes('[mcp_servers.mdpipeline]'))", timeout=15000)
     ctx.close()
 
 

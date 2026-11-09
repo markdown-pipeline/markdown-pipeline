@@ -183,7 +183,12 @@ def test_only_the_publish_job_can_get_an_identity_token_and_only_for_a_release()
 def test_the_workflow_uses_trusted_publishing_and_holds_no_token():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "uv publish" in text and "--trusted-publishing always" in text
-    assert "PYPI_TOKEN" not in text and "UV_PUBLISH_TOKEN" not in text and "secrets." not in text
+    assert "PYPI_TOKEN" not in text and "UV_PUBLISH_TOKEN" not in text
+    # DEV-11: the only secret in this workflow is the public-release job's GitHub App key; the PyPI publish job holds none.
+    jobs = load()["jobs"]
+    for name, job in jobs.items():
+        if name != "public-release":
+            assert "secrets." not in yaml.safe_dump(job), name
 
 
 @needs_workflow

@@ -83,7 +83,7 @@ def test_a_start_that_never_comes_up_says_so_with_one_next_step_and_lets_you_try
         page.get_by_role("button", name="Start it").click()
         failed = page.locator("#bg-not-running")
         expect(failed).to_contain_text("did not start", timeout=8000)
-        expect(failed).to_contain_text("mdpipeline background")                       # the one next step
+        expect(failed).to_contain_text("mdpipeline schedule background restart")       # MD-219: the one next step
         expect(failed.get_by_role("button", name="Try again")).to_be_enabled()
         assert never_reloaded(page)
 

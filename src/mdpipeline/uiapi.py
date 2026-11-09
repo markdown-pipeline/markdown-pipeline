@@ -131,6 +131,14 @@ def version_view(brain: Brain) -> dict:
     return {"version": _version(brain), "syncing": is_locked(brain)}
 
 
+def _update_notice() -> dict | None:
+    """MD-222: the "newer version" notice (None when none, hidden, or the check is off). Asking PyPI never makes the page wait."""
+    from . import updatecheck
+
+    updatecheck.refresh_in_background()
+    return updatecheck.app_notice()
+
+
 def state_view(brain: Brain, now: float | None = None, running: tuple[str, ...] = ()) -> dict:
     now = now if now is not None else time.time()
     config = load_config(brain)
@@ -192,7 +200,8 @@ def state_view(brain: Brain, now: float | None = None, running: tuple[str, ...] 
     return {"brain": {"path": str(brain.root), "raw_md_files": raw_md}, "pipelines": rows, "badge": badge,
             "summary": summary, "github_app": github_app_view(), "usage": usage_summary(), "syncing": is_locked(brain), "running": list(running), "state_error": state_error,
             "connect": all_snippets(brain), "brain_age_seconds": status["brain_age_seconds"], **version_view(brain),
-            "notices": active_notices(brain), "background": background_view(brain), "os": install_info.os_name()}
+            "notices": active_notices(brain), "background": background_view(brain), "os": install_info.os_name(),
+            "update_notice": _update_notice()}
 
 
 # --- scheduled sync (MD-121) -------------------------------------------------------------------
@@ -212,7 +221,7 @@ def background_view(brain: Brain | None = None) -> dict:
     view["version"] = background.running_version()                         # MD-204: which version the running process is (None when none runs)
     view["installed_version"] = __version__
     view["outdated"] = bool(view["running"] and background.is_outdated())
-    view["restarting"] = bool(view["outdated"] and background.restart_pending())            # MD-218: asked for already: Settings says so instead of asking
+    view["restarting"] = bool((view["outdated"] and background.restart_pending()) or background.restart_in_progress())            # MD-218: asked for already: Settings says so instead of asking
     view["linger_hint"] = view["enabled"] and autostart.linger_hint()
     from .scheduler import linger_notice_hidden
 

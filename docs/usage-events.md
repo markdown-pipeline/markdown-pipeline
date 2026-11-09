@@ -1352,6 +1352,66 @@ Example payload as sent:
 }
 ```
 
+### `update_notice_shown`
+
+Do releases reach people (MD-222, H-UPD-2): a newer version was shown, with the two version numbers and where (command line or app page), at most once a day per place. Emitted from: cli, ui.
+
+| Property | Allowed values |
+|---|---|
+| `from_version` | a release number such as `0.3.1` |
+| `to_version` | a release number such as `0.3.1` |
+| `surface` | `cli` / `app` |
+
+Example payload as sent:
+
+```json
+{
+  "event": "update_notice_shown",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "from_version": "0.1.17",
+    "to_version": "0.1.19",
+    "surface": "cli",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
+### `update_notice_acted`
+
+Do releases reach people (MD-222, H-UPD-2): the first run on the version a notice named, with the two version numbers. Emitted from: cli, ui.
+
+| Property | Allowed values |
+|---|---|
+| `from_version` | a release number such as `0.3.1` |
+| `to_version` | a release number such as `0.3.1` |
+
+Example payload as sent:
+
+```json
+{
+  "event": "update_notice_acted",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "from_version": "0.1.17",
+    "to_version": "0.1.19",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
 ### `notice_acted`
 
 The person acted on a notice: used 'Start sync again' in the app or ran the restart command while the 'background sync isn't running' notice was up (MD-212, H-BOOT-2: shown -> acted -> cleared); a fixed kind and door, nothing else. Emitted from: ui, cli.

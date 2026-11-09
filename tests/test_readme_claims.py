@@ -14,7 +14,9 @@ USER_DOCS = {
 NETWORK_RULE = (
     "Network calls come only from the sources and destinations you connect (your Atlassian site; api.github.com and the GitHub "
     "sign-in pages if you use a GitHub repository), and, only if you chose \"Share usage\" or press Send, from usage data to "
-    "us.i.posthog.com. With folder sources, a local folder and sharing off, the app makes zero network calls. Everything is "
+    "us.i.posthog.com, plus a once-a-day look for a newer version at pypi.org (a plain request that sends nothing about you; turn it off with "
+    "MDPIPELINE_NO_UPDATE_CHECK=1 or `mdpipeline update-check off`). With folder sources, a local folder, sharing off and that check off, the "
+    "app makes zero network calls. Everything is "
     "https; the window listens on 127.0.0.1 only."
 )
 LOCAL_RULE = (

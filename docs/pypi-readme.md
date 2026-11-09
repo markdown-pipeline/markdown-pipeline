@@ -40,6 +40,8 @@ If you already have [uv](https://docs.astral.sh/uv/) (Linux, tested), your agent
 Usage data only if you choose to share it, and the words you type in a feedback or source request when you press Send.
 The full list, in plain words: [what-we-send](https://github.com/markdown-pipeline/markdown-pipeline/blob/main/what-we-send.md). Turn it off any time: `mdpipeline usage off`.
 
+The app also looks, once a day at most, at pypi.org for a newer version and tells you in one line (a plain request that sends nothing about you; it runs whatever you chose about sharing usage). Turn it off with `MDPIPELINE_NO_UPDATE_CHECK=1` or `mdpipeline update-check off`.
+
 ## Feedback and problems
 
 Open an issue on this repository: [Issues](https://github.com/markdown-pipeline/markdown-pipeline/issues). Tell us what you tried, what you expected and what happened.

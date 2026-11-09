@@ -1,0 +1,98 @@
+# DEV-13 (epic DEV-9, product 2026-11-09): after a release, check that every install channel serves the new version.
+# It fails loudly (red run + a table in the job summary) if any channel is behind. Read-only: it publishes nothing.
+# WHEN: after publish-registry completes (whatever its result), or by hand for any version. Hosted runners are free on this public repo.
+# The team sees failures through `gh run list -R markdown-pipeline/markdown-pipeline -w verify-channels --limit 3` (product's daily sync).
+name: verify-channels
+on:
+  workflow_run:
+    workflows: [publish-registry]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version every channel should serve, e.g. 0.1.19 (no v)"
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    container: debian:trixie-slim    # a clean machine for the install.sh check
+    env:
+      DISPATCH_VERSION: ${{ inputs.version }}
+      RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - name: Tools for the checks (curl, python3)
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates curl python3 >/dev/null
+      - name: Which version
+        id: v
+        run: |
+          set -eu
+          if [ -n "$DISPATCH_VERSION" ]; then v="$DISPATCH_VERSION"
+          elif printf '%s' "$RUN_BRANCH" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then v="${RUN_BRANCH#v}"
+          else v="$(curl -fsS https://pypi.org/pypi/mdpipeline/json | python3 -c 'import json,sys;print(json.load(sys.stdin)["info"]["version"])')"; fi
+          printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::not a version: $v"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"; echo "Checking every channel for $v"
+      - name: Check the channels (retries for up to ~15 min for registry and CDN lag)
+        env:
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          set -u
+          cat > /tmp/check.py <<'PY'
+          import json, os, subprocess, sys, urllib.request
+          V = os.environ["V"]
+          def get(url):
+              req = urllib.request.Request(url, headers={"User-Agent": "markdown-pipeline-verify-channels", "Accept": "application/json"})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+          def pypi():
+              return get("https://pypi.org/pypi/mdpipeline/json")["info"]["version"]
+          def public_latest():
+              return get("https://api.github.com/repos/markdown-pipeline/markdown-pipeline/releases/latest")["tag_name"].lstrip("v")
+          def registry():
+              d = get("https://registry.modelcontextprotocol.io/v0/servers?search=io.github.markdown-pipeline/mdpipeline")
+              v = [s["server"]["version"] for s in d["servers"] if s["server"]["name"] == "io.github.markdown-pipeline/mdpipeline"
+                   and s["_meta"]["io.modelcontextprotocol.registry/official"]["isLatest"]]
+              return v[0] if v else "none"
+          def install_sh():
+              home = "/tmp/clean-home"
+              subprocess.run(["rm", "-rf", home]); os.makedirs(home)
+              env = {"HOME": home, "PATH": f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"}
+              sh = "curl -fsSL https://raw.githubusercontent.com/markdown-pipeline/markdown-pipeline/main/install.sh | sh"
+              done = subprocess.run(["sh", "-c", sh], env=env, capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL)
+              if done.returncode != 0:
+                  return "install failed: " + (done.stderr or done.stdout).strip().splitlines()[-1][:120] if (done.stderr or done.stdout).strip() else "install failed"
+              out = subprocess.run(["sh", "-c", "uv tool list"], env=env, capture_output=True, text=True).stdout
+              for line in out.splitlines():
+                  if line.startswith("mdpipeline "):
+                      return line.split()[1].lstrip("v")
+              return "not installed"
+          checks = {"PyPI": pypi, "Public repo Latest release": public_latest, "MCP Registry isLatest": registry, "install.sh in clean debian:trixie-slim": install_sh}
+          only = sys.argv[1:] or list(checks)
+          result = {}
+          for name in only:
+              try:
+                  result[name] = checks[name]()
+              except Exception as e:  # a channel that can't be read is behind
+                  result[name] = f"error: {type(e).__name__}: {e}"[:160]
+          json.dump(result, sys.stdout)
+          PY
+          for i in $(seq 1 10); do
+            python3 /tmp/check.py > /tmp/result.json
+            behind="$(python3 -c 'import json,os;r=json.load(open("/tmp/result.json"));print(sum(v!=os.environ["V"] for v in r.values()))')"
+            cat /tmp/result.json; echo
+            [ "$behind" = "0" ] && break
+            [ "$i" = "10" ] || { echo "$behind channel(s) behind, retry $i/10 in 90 s"; sleep 90; }
+          done
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os
+          V = os.environ["V"]; r = json.load(open("/tmp/result.json"))
+          print(f"## Channels for {V}\n\n| Channel | Version seen | OK |\n|---|---|---|")
+          for k, v in r.items():
+              print(f"| {k} | {v} | {'OK' if v == V else '**BEHIND**'} |")
+          print("| Glama | not checked (its API needs an API key; see DEV-12) | - |")
+          PY
+          cat "$GITHUB_STEP_SUMMARY"
+          [ "$behind" = "0" ] || { echo "::error::$behind channel(s) do not serve $V: see the table in the job summary"; exit 1; }

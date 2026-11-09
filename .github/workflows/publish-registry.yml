@@ -1,9 +1,24 @@
-# MD-199: list (or update the listing of) Markdown Pipeline on the official MCP Registry. Started by hand, then it waits for the owner's approval in the
-# `mcp-registry` environment (add the owner as a required reviewer). OIDC login: there is no token anywhere. (`mcp-publisher login github` cannot publish
-# under an organization namespace; OIDC from Actions can: Registry docs, "Authentication".) The PyPI package named in server.json must already exist.
+# DEV-10 (epic DEV-9, owner 2026-11-09): list the release on the official MCP Registry as io.github.markdown-pipeline/mdpipeline.
+# WHY HERE: the Registry's GitHub OIDC login grants io.github.<repository owner>/* only, so the publish must run in a markdown-pipeline repo.
+# Hosted runners are free on public repos: this uses none of the private repo's minutes.
+# WHEN: by itself when a release of this repo is published (CI publishes it after PyPI, DEV-11), or by hand for a given tag.
+# WHAT: the release's `server.json` asset (copied from the private repo's tag). It must name the tag's version, and that version must already be on PyPI.
+# No token anywhere: OIDC. This workflow publishes only to the MCP Registry, nothing else.
 name: publish-registry
 on:
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "The public release tag to list on the Registry, e.g. v0.1.19 (its server.json asset is published)"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: publish-registry
+  cancel-in-progress: false
 jobs:
   publish:
     runs-on: ubuntu-24.04
@@ -14,8 +29,31 @@ jobs:
       contents: read
     env:
       MCP_PUBLISHER_VERSION: v1.8.6
+      TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - name: The tag is a plain version tag
+        run: |
+          set -eu
+          printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::not a version tag: $TAG"; exit 1; }
+      - name: Get server.json from the release (waits up to 3 min for the asset upload)
+        run: |
+          set -eu
+          for i in $(seq 1 18); do
+            if gh release download "$TAG" --pattern server.json --clobber 2>/dev/null; then break; fi
+            echo "server.json is not on release $TAG yet ($i/18)"; sleep 10
+          done
+          test -s server.json || { echo "::error::release $TAG has no server.json asset"; exit 1; }
+      - name: server.json names the tag's version, and that version is on PyPI
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          read -r top pkg ident <<<"$(python3 -c 'import json;d=json.load(open("server.json"));p=d["packages"][0];print(d["version"],p["version"],p["identifier"])')"
+          [ "$top" = "$want" ] && [ "$pkg" = "$want" ] || { echo "::error::server.json says version $top / package $pkg, the tag is $TAG"; exit 1; }
+          [ "$ident" = "mdpipeline" ] || { echo "::error::unexpected package $ident"; exit 1; }
+          curl --fail --silent --show-error --output /dev/null "https://pypi.org/pypi/mdpipeline/${want}/json" \
+            || { echo "::error::mdpipeline ${want} is not on PyPI yet: publish it first"; exit 1; }
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6   # v4.1.2
       - name: Download and verify mcp-publisher
         run: |
@@ -31,14 +69,20 @@ jobs:
             "$archive"
           tar xzf "$archive" mcp-publisher
           rm -f "$archive" "$archive.sigstore.json"
-      - name: The entry is valid and its PyPI version exists
-        run: |
-          set -euo pipefail
-          ./mcp-publisher validate server.json
-          version="$(python3 -c 'import json; print(json.load(open("server.json"))["packages"][0]["version"])')"
-          curl --fail --silent --show-error --output /dev/null "https://pypi.org/pypi/mdpipeline/${version}/json" \
-            || { echo "mdpipeline ${version} is not on PyPI yet: publish it first"; exit 1; }
+      - name: The entry is valid
+        run: ./mcp-publisher validate server.json
       - name: Authenticate to the MCP Registry (OIDC)
         run: ./mcp-publisher login github-oidc
       - name: Publish server.json
-        run: ./mcp-publisher publish
+        run: ./mcp-publisher publish server.json
+      - name: The Registry serves it as latest
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          for i in $(seq 1 12); do
+            got="$(curl -fsS 'https://registry.modelcontextprotocol.io/v0/servers?search=io.github.markdown-pipeline/mdpipeline' \
+              | python3 -c 'import json,sys;print(" ".join(s["server"]["version"] for s in json.load(sys.stdin)["servers"] if s["server"]["name"]=="io.github.markdown-pipeline/mdpipeline" and s["_meta"]["io.modelcontextprotocol.registry/official"]["isLatest"]))')"
+            [ "$got" = "$want" ] && { echo "Registry isLatest = $got"; echo "MCP Registry isLatest: **$got**" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+            echo "Registry isLatest = '$got', want $want ($i/12)"; sleep 10
+          done
+          echo "::error::Registry isLatest is '$got', not $want"; exit 1

@@ -283,7 +283,9 @@ def test_s8_author_keys_survive_varied_samples_and_malformed_files_are_skipped_n
     before = tree_snapshot(src)
     res = sync_pipeline(brain, "s")
     assert tree_snapshot(src) == before
-    assert res.counts()["errors"] == len(MALFORMED) and res.counts()["created"] == len(SAMPLES)
+    # MD-201: the three front-matter mistakes are skipped WARNINGS; the author's own `provenance` key stays an error
+    assert res.counts()["errors"] == 1 and res.counts()["skipped"] == len(MALFORMED) - 1 and res.counts()["created"] == len(SAMPLES)
+    assert sorted(w["path"] for w in res.plan.front_matter_warnings) == ["bad-yaml.md", "list-fm.md", "unterminated.md"]
     for name, text in SAMPLES.items():
         out = (brain_dir / "raw/s/samples" / name).read_bytes().decode()
         meta, body = parse_document(out)

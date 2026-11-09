@@ -262,3 +262,132 @@ def test_a_slow_review_shows_what_it_is_doing_and_how_far_not_a_static_line(page
         shot(page, "firstrun-review-progress")
         gate.set()
         expect(page.locator("#fr-count")).to_contain_text("6 issues")
+
+
+def test_the_poll_leaves_the_person_in_the_output_folder_field_and_their_typing_lands(page, brain, notes, tmp_path):
+    """MD-215: the 2-second poll rebuilt the 'Where should your files go?' step when something changed on disk. The person's cursor was thrown out of the
+    field, so what they typed next went nowhere and the files went to the suggested folder. (Other redraws on this step, such as the review finishing
+    to load, keep the typed value and the focus; what matters is that the person stays in the field.)"""
+    import os
+    import time
+
+    dest = tmp_path / "mine"
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        page.get_by_role("button", name="Folder on this computer").click()
+        page.get_by_label("Folder path").fill(str(notes))
+        expect(page.locator("#fr-folder-msg")).to_contain_text("Folder found")
+        page.get_by_role("button", name="Continue").click()
+        expect(page.get_by_role("heading", name="Where should your files go?")).to_be_visible()
+        expect(page.locator("#fr-dest-msg")).not_to_be_empty()                          # the step has settled (the suggestion arrived)
+        field = page.get_by_role("textbox", name="Output folder")
+        field.click()
+        field.press("ControlOrMeta+a")
+        brain.config_dir.mkdir(parents=True, exist_ok=True)
+        (brain.config_dir / "state.json").touch()
+        os.utime(brain.config_dir / "state.json", ns=(time.time_ns(), time.time_ns() + 7_000_000_000))       # the version the poll compares changes
+        page.wait_for_timeout(2600)                                                                         # more than one poll tick
+        assert page.evaluate("document.activeElement && document.activeElement.id") == "fr-dest", "the poll threw the person out of the field"
+        page.keyboard.type(str(dest))
+        expect(field).to_have_value(str(dest))
+        expect(page.locator("#fr-dest-msg")).to_contain_text("New folder")
+
+
+def test_the_suggested_folder_reply_never_replaces_a_field_the_person_is_in(page, brain, notes, tmp_path):
+    """MD-215: the reply of /api/first-run/dest-check (the suggested folder) arrives after the step is drawn. It rebuilt the folder field, so a person who had
+    clicked into it lost the focus, and what they typed next went nowhere: the files then went to the suggested folder. A dirty or focused field wins."""
+    dest = tmp_path / "mine"
+    held = []
+    page.route("**/api/first-run/dest-check", lambda route: held.append(route) if not held else route.continue_())
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        page.get_by_role("button", name="Folder on this computer").click()
+        page.get_by_label("Folder path").fill(str(notes))
+        expect(page.locator("#fr-folder-msg")).to_contain_text("Folder found")
+        page.get_by_role("button", name="Continue").click()
+        expect(page.get_by_role("heading", name="Where should your files go?")).to_be_visible()
+        field = page.get_by_role("textbox", name="Output folder")
+        field.click()                                                  # the person is in the field; nothing typed yet; the suggestion has not arrived
+        page.wait_for_function("true")
+        assert len(held) == 1, "the first suggestion request should be waiting"
+        held[0].continue_()                                            # now the reply arrives
+        expect(page.locator("#fr-dest-msg")).not_to_be_empty()
+        page.keyboard.type(str(dest))                                  # typing after the reply must still land in the field
+        expect(field).to_have_value(str(dest))
+        expect(page.locator("#fr-dest-msg")).to_contain_text("New folder")
+        page.get_by_role("button", name="Use this folder").click()
+        expect(page.get_by_role("heading", name="Review before we write anything")).to_be_visible()
+        page.get_by_role("button", name="Write 7 files").click()
+        expect(page.locator("#fr-ready")).to_contain_text("7 files in")
+    assert len(list(dest.rglob("*.md"))) == 7
+
+
+def test_the_review_finishing_to_load_updates_the_target_step_in_place(page, brain, notes, tmp_path):
+    """MD-215: the count line of the 'Where should your files go?' step ("7 Markdown files are ready to write") arrives with the review. It used to redraw the whole
+    step, replacing the folder field under a person who was already typing in it. Now only the count line changes: same field, same value, same focus."""
+    dest = tmp_path / "mine"
+    held = []
+    page.route("**/api/first-run/review", lambda route: held.append(route) if not held else route.continue_())
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        page.get_by_role("button", name="Folder on this computer").click()
+        page.get_by_label("Folder path").fill(str(notes))
+        expect(page.locator("#fr-folder-msg")).to_contain_text("Folder found")
+        page.get_by_role("button", name="Continue").click()
+        expect(page.get_by_role("heading", name="Where should your files go?")).to_be_visible()
+        expect(page.locator("#fr-dest-msg")).not_to_be_empty()
+        field = page.get_by_role("textbox", name="Output folder")
+        field.click()
+        field.press("ControlOrMeta+a")
+        page.keyboard.type(str(dest))
+        page.evaluate("window.__marker = document.getElementById('fr-dest')")
+        expect(page.locator("#fr-dest-msg")).to_contain_text("New folder")
+        assert len(held) == 1, "the review request should be waiting"
+        held[0].continue_()
+        expect(page.locator("#fr-lede")).to_contain_text("7 Markdown files are ready to write")
+        assert page.evaluate("window.__marker === document.getElementById('fr-dest')"), "the review's arrival replaced the folder field"
+        assert page.evaluate("document.activeElement.id") == "fr-dest"
+        expect(field).to_have_value(str(dest))
+
+
+# MD-215 AC8: one guarantee at the render level, whatever caused the redraw ------------------------------------------------------------------
+def test_any_redraw_of_a_first_run_step_keeps_what_the_person_typed_and_where_the_cursor_is(page, brain, notes, tmp_path):
+    """Whatever forces the redraw (poll, suggestion reply, review arriving, anything future), the typed value, the focus and the cursor survive, and a
+    value from the server never replaces what the person typed. Here the redraw is forced directly, with the page state deliberately holding a server value."""
+    dest = str(tmp_path / "mine")
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        page.get_by_role("button", name="Folder on this computer").click()
+        page.get_by_label("Folder path").fill(str(notes))
+        expect(page.locator("#fr-folder-msg")).to_contain_text("Folder found")
+        page.get_by_role("button", name="Continue").click()
+        expect(page.get_by_role("heading", name="Where should your files go?")).to_be_visible()
+        expect(page.locator("#fr-dest-msg")).not_to_be_empty()
+        field = page.get_by_role("textbox", name="Output folder")
+        field.click()
+        field.press("ControlOrMeta+a")
+        page.keyboard.type(dest)
+        page.evaluate("document.getElementById('fr-dest').setSelectionRange(3, 5)")          # a cursor in the middle of the text
+        page.evaluate("FR.dest = '~/a-value-from-the-server'; renderFirstRun()")              # the page state says something else; the redraw must not win
+        assert page.evaluate("document.getElementById('fr-dest').value") == dest
+        assert page.evaluate("document.activeElement.id") == "fr-dest"
+        assert page.evaluate("[document.getElementById('fr-dest').selectionStart, document.getElementById('fr-dest').selectionEnd]") == [3, 5]
+        page.keyboard.type("Z")                                                              # typing after the redraw lands in the same field
+        expect(field).to_have_value(dest[:3] + "Z" + dest[5:])
+
+
+def test_a_redraw_of_the_folder_step_keeps_what_was_typed_there(page, brain, notes, tmp_path):
+    """A different step is drawn from its own state; a redraw of the same step keeps the typing (here on the first step with a field, after Back)."""
+    typed = str(tmp_path / "typed-on-this-visit")
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        page.get_by_role("button", name="Folder on this computer").click()
+        page.get_by_label("Folder path").fill(str(notes))
+        expect(page.locator("#fr-folder-msg")).to_contain_text("Folder found")
+        page.get_by_role("button", name="Continue").click()
+        expect(page.get_by_role("heading", name="Where should your files go?")).to_be_visible()
+        page.get_by_role("button", name="Back").click()
+        expect(page.get_by_label("Folder path")).to_have_value(str(notes))                      # a fresh visit: drawn from the state
+        page.get_by_label("Folder path").fill(typed)
+        page.evaluate("FR.path = '/somewhere/else'; renderFirstRun()")
+        expect(page.get_by_label("Folder path")).to_have_value(typed)                           # typed on this visit: kept

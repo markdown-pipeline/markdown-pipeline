@@ -223,3 +223,19 @@ def test_source_path_must_not_be_a_file(brain, make_source, tmp_path):
     f = tmp_path / "f.md"
     f.write_text("x")
     assert "source-not-a-folder" in codes(check(brain, Pipeline.new("p", [str(f)])).errors)
+
+
+# MD-182 follow-up (product, comment 11032): the editor's check uses the same reserved-name rule as the real plan ---------------
+def test_target_for_renames_a_windows_reserved_name_like_the_planner_does():
+    from mdpipeline.validation import target_for
+
+    p = Pipeline.new("p", ["/x"])
+    assert target_for(p, "docs", "con.md", 0.0) == "raw/p/docs/con_.md"
+    assert target_for(p, "docs", "aux/a.md", 0.0) == "raw/p/docs/aux_/a.md"
+    assert target_for(p, "docs", "notes.md", 0.0) == "raw/p/docs/notes.md"
+
+
+def test_collision_between_a_reserved_name_and_its_renamed_twin_is_reported(brain, make_source):
+    src = make_source("docs", {"con.md": "a", "con_.md": "b"})
+    res = check(brain, Pipeline.new("p", [str(src)]))          # the default policy is "original": a clash is an error here
+    assert "target-collision" in codes(res.errors)

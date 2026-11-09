@@ -250,7 +250,7 @@ Credential friction. Emitted from: ui, cli.
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
 | `auth_method` | `token` / `oauth` |
-| `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `unknown` |
+| `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `script_missing` / `unknown` |
 
 Example payload as sent:
 
@@ -391,12 +391,13 @@ Example payload as sent:
 
 ### `error_shown`
 
-Friction hotspots. Emitted from: ui.
+Friction hotspots; the page's own scripts: ui_area `page`, error_class `script_missing` and which script did not load (MD-217, H-SCRIPT-1: does it happen to outside users). Emitted from: ui.
 
 | Property | Allowed values |
 |---|---|
-| `ui_area` | `home` / `editor` / `source` / `target` / `preview` / `activity` / `view` / `settings` / `onboarding` / `other` |
-| `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `unknown` |
+| `ui_area` | `home` / `editor` / `source` / `target` / `preview` / `activity` / `view` / `settings` / `onboarding` / `page` / `other` |
+| `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `script_missing` / `unknown` |
+| `script` | `browse` / `firstrun` / `other` |
 
 Example payload as sent:
 
@@ -407,8 +408,9 @@ Example payload as sent:
   "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
-    "ui_area": "source",
-    "error_class": "auth",
+    "ui_area": "page",
+    "error_class": "script_missing",
+    "script": "firstrun",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -624,7 +626,7 @@ Reliability as users see it. Emitted from: engine.
 
 | Property | Allowed values |
 |---|---|
-| `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `unknown` |
+| `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `script_missing` / `unknown` |
 | `source_type` | `folder` / `jira` / `other` |
 
 Example payload as sent:
@@ -638,6 +640,33 @@ Example payload as sent:
   "properties": {
     "error_class": "network",
     "source_type": "jira",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
+### `front_matter_warning`
+
+H-FM-3: how common invalid hand-written front matter is in real folders (MD-201: a count of files, no path, no name, no line). Emitted from: engine.
+
+| Property | Allowed values |
+|---|---|
+| `files_count` | whole number, 0 to 1,000 |
+
+Example payload as sent:
+
+```json
+{
+  "event": "front_matter_warning",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "files_count": 1,
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -1030,12 +1059,15 @@ Example payload as sent:
 
 ### `install_completed`
 
-Install funnel. Emitted from: cli.
+Install funnel; when the install script downloaded a release asset, which one (MD-205: release downloads we can tell from other people's, with is_internal). Emitted from: cli.
 
 | Property | Allowed values |
 |---|---|
 | `os` | `macos` / `linux` / `windows` / `other` |
 | `install_method` | `script` / `pip` / `pipx` / `uv` / `uvx` / `registry` / `source` / `other` |
+| `release_version` | a release number such as `0.3.1` |
+| `asset_name` | the file name of our release wheel, such as `mdpipeline-0.3.1-py3-none-any.whl` (nothing else is accepted) |
+| `download_source` | `github_release` |
 
 Example payload as sent:
 
@@ -1048,6 +1080,9 @@ Example payload as sent:
   "properties": {
     "os": "macos",
     "install_method": "script",
+    "release_version": "0.1.16",
+    "asset_name": "mdpipeline-0.1.16-py3-none-any.whl",
+    "download_source": "github_release",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -1265,7 +1300,7 @@ Reliability notices users get; for the headless-Linux linger line (kind `linger`
 
 | Property | Allowed values |
 |---|---|
-| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` / `vault_unsafe` / `linger` / `setup_mode` |
+| `kind` | `sync_failed` / `source_missing` / `stale` / `guard_blocked` / `vault_locked` / `vault_unsafe` / `linger` / `setup_mode` / `background_not_running` |
 | `surface` | `ready` / `home` / `settings` / `cli` |
 
 Example payload as sent:
@@ -1317,13 +1352,46 @@ Example payload as sent:
 }
 ```
 
+### `notice_acted`
+
+The person acted on a notice: used 'Start sync again' in the app or ran the restart command while the 'background sync isn't running' notice was up (MD-212, H-BOOT-2: shown -> acted -> cleared); a fixed kind and door, nothing else. Emitted from: ui, cli.
+
+| Property | Allowed values |
+|---|---|
+| `kind` | `background_not_running` |
+| `via` | `app` / `cli` |
+
+Example payload as sent:
+
+```json
+{
+  "event": "notice_acted",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "kind": "background_not_running",
+    "via": "app",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
 ### `app_updated`
 
-Update adoption. Emitted from: ui, cli.
+Update adoption; when `update` (a script install) downloaded a release asset, which one (MD-205). Emitted from: ui, cli.
 
 | Property | Allowed values |
 |---|---|
 | `previous_version` | a release number such as `0.3.1` |
+| `install_method` | `script` / `pip` / `pipx` / `uv` / `uvx` / `registry` / `source` / `other` |
+| `release_version` | a release number such as `0.3.1` |
+| `asset_name` | the file name of our release wheel, such as `mdpipeline-0.3.1-py3-none-any.whl` (nothing else is accepted) |
+| `download_source` | `github_release` |
 
 Example payload as sent:
 
@@ -1335,6 +1403,10 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "previous_version": "0.3.1",
+    "install_method": "script",
+    "release_version": "0.3.2",
+    "asset_name": "mdpipeline-0.3.2-py3-none-any.whl",
+    "download_source": "github_release",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -1366,6 +1438,35 @@ Example payload as sent:
     "how": "user_service",
     "desktop_session": "no",
     "linger_enabled": "no",
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
+### `background_self_healed`
+
+How often background sync was found dead and put back (MD-212, H-BOOT-2): the login item re-created, or the process started again by a command, the app or an agent's mcp session; no paths, no names. Emitted from: cli.
+
+| Property | Allowed values |
+|---|---|
+| `what` | `login_item` / `process` |
+| `via` | `cli` / `app` / `mcp` |
+
+Example payload as sent:
+
+```json
+{
+  "event": "background_self_healed",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "what": "login_item",
+    "via": "cli",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",

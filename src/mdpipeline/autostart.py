@@ -14,6 +14,8 @@ SERVICE = "mdpipeline-background.service"
 LINGER_LINE = ("Background sync stops when you log out, and after a reboot it waits until you log in. To keep it running, run this once: "
                "`loginctl enable-linger $USER` (if it says access denied: `sudo loginctl enable-linger $USER`).")
 LINGER_LINE_PLAIN = LINGER_LINE.replace("`", "")      # the CLI does not render code style (MD-167 L1)
+NO_LOGIN_START_LINE = ("Markdown Pipeline can't start itself when you log in on this system, so your files won't update after a restart until you start it. "
+                       "To start it now: mdpipeline background. To start it at every login, add that command to your own startup or service manager.")
 HOWS = ("login_item", "user_service", "app_start", "manual")       # how a background process was started (MD-165, background_started)
 
 
@@ -89,6 +91,18 @@ def refresh_if_outdated(*, home: Path | None = None, platform: str | None = None
         if not path.is_file() or path.read_bytes() == wanted:
             return False
         path.write_bytes(wanted)
+    except (AutostartError, OSError):
+        return False
+    return True
+
+
+def ensure_item(*, home: Path | None = None, platform: str | None = None, python: str | None = None) -> bool:
+    """MD-212: create the login item when it is MISSING (the caller has checked that background sync is on). An existing item is never touched
+    here (``refresh_if_outdated`` brings it up to date). Returns whether it created one; a platform without login items changes nothing."""
+    try:
+        if item_path(home=home, platform=platform).exists():
+            return False
+        enable(home=home, platform=platform, python=python)
     except (AutostartError, OSError):
         return False
     return True
@@ -220,3 +234,14 @@ def desktop_state() -> str:
 def linger_notice() -> bool:
     """MD-166: tell the person where they are (first run, Home, the CLI) when linger is off on a box with no desktop session."""
     return desktop_state() == "no" and linger_hint()
+
+
+def cannot_start_at_login() -> bool:
+    """MD-212 (AC3): Linux with no systemd (runit, OpenRC...) AND no confirmed desktop session: nothing here can run the login item or a user service at
+    login, and the app has nothing to check the "starts at login" promise against. A desktop with XDG autostart (display set, or logind reports a
+    graphical session) is unchanged. Reads only."""
+    from . import install_info
+
+    if install_info.os_name() != "linux" or _systemd_ok():          # the same OS source as the rest of Settings, so a faked Windows is Windows here too
+        return False
+    return desktop_state() != "yes"

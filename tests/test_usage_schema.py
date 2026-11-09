@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from mdpipeline.usage_events import EVENTS, EmailAddress, UserText, sanitize
+from mdpipeline.usage_events import EVENTS, AssetName, EmailAddress, UserText, sanitize
 
 CANARY = "ACME-secret-title /home/user/private.md https://acme.atlassian.net a@b.co ghp_abcdef123456"
 
@@ -95,6 +95,8 @@ SPEC_EVENTS = {
     # product additions and product's comment on MD-116
     "install_completed", "agent_connected", "try_started", "try_completed", "schedule_changed", "source_requested", "feedback_answered",
     "notice_shown", "app_updated", "first_agent_read",
+    # MD-201 (product comment 11328): count of files with a front-matter warning
+    "front_matter_warning",
 }
 
 
@@ -123,7 +125,8 @@ FORBIDDEN_NAME = re.compile(r"title|name|path|url|uri|email|token|jql|query|erro
 def test_no_property_is_named_like_something_that_holds_content():
     # MD-123: the one exception is words the person typed and pressed Send on (explicit events only, checked in test_usage_explicit.py)
     offenders = [(e, p) for e, ev in EVENTS.items() for p, rule in ev.props.items()
-                 if FORBIDDEN_NAME.search(p) and not (ev.explicit and isinstance(rule, (UserText, EmailAddress)))]
+                 if FORBIDDEN_NAME.search(p) and not (ev.explicit and isinstance(rule, (UserText, EmailAddress)))
+                 and not isinstance(rule, AssetName)]      # MD-205: `asset_name` (named by marketing, MD-205 comment 11232) can only be OUR wheel's file name, checked by pattern
     assert offenders == []
 
 

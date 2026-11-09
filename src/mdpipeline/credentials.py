@@ -44,7 +44,7 @@ def run_keychain(cmd: list[str]) -> tuple[int, str]:
     return done.returncode, done.stdout
 
 
-def resolve_token(ref: str) -> str:
+def resolve_token(ref: str, purpose: str = "") -> str:
     kind, name = parse_ref(ref)
     if kind == "vault":
         from .vault import VaultError, VaultLocked, default_vault
@@ -60,6 +60,10 @@ def resolve_token(ref: str) -> str:
         if not value:
             raise CredentialError(f"The environment variable {name} is not set or is empty. Set it to the token and try again.")
         return value
+    if winacl.is_windows() and purpose == "github":          # MD-180: marketing's GitHub variant (comment 11375); a GitHub target is not a "Jira source"
+        raise CredentialError("keychain: references don't work on Windows, so this GitHub target can't read its token. Nothing was changed or deleted. "
+                              "Let the app keep the token instead: mdpipeline pipeline edit <pipeline> --replace-token (you will be asked for a new GitHub token, "
+                              "typing is hidden), or choose Edit on the pipeline in the app and enter a new token. Then sync again.")
     if winacl.is_windows():                        # MD-180 AC4: there is no keychain tool here; say what to do instead (marketing's words, MM-135)
         raise CredentialError("keychain: references don't work on Windows, so this Jira source can't read its token. Nothing was changed or deleted. "
                               "Let the app keep the token instead: mdpipeline pipeline edit <pipeline> --jira-label <label> --replace-jira-token "

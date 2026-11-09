@@ -164,7 +164,9 @@ def test_the_workflow_runs_on_a_published_release_and_by_hand_with_a_tag():
 @needs_workflow
 def test_publishing_needs_the_tests_the_gate_and_the_clean_container_check():
     jobs = load()["jobs"]
-    assert set(jobs["publish"]["needs"]) == {"tests", "build", "clean-install"}
+    assert set(jobs["publish"]["needs"]) == {"release-gate", "tests", "build", "clean-install"}
+    assert "needs" not in jobs["release-gate"]
+    assert jobs["tests"]["needs"] == "release-gate" and jobs["build"]["needs"] == "release-gate"
 
 
 @needs_workflow
@@ -212,14 +214,23 @@ def test_a_tag_that_is_not_a_plain_version_tag_stops_the_build_before_anything_r
 
 
 @needs_workflow
-def test_the_clean_install_job_runs_uvx_help_from_the_built_wheel_in_a_container():
+def test_the_clean_install_job_runs_uvx_help_from_the_built_wheel_in_a_fresh_environment():
     job = load()["jobs"]["clean-install"]
-    text = yaml.safe_dump(job)
-    assert "container" in job or "docker run" in text
-    assert "uvx" in text and "--help" in text
+    assert not any(str(s.get("uses", "")).startswith("actions/checkout") for s in job["steps"])
+    text = "\n".join(s.get("run", "") for s in job["steps"])
+    for needle in ("uvx --isolated", "--from dist/mdpipeline-*.whl", "--help", "UV_CACHE_DIR", "test ! -e pyproject.toml"):
+        assert needle in text, needle
+
+
+@needs_workflow
+def test_the_release_gate_lets_only_the_owner_publish_and_only_from_the_tag_ref():
+    run = "\n".join(s.get("run", "") for s in load()["jobs"]["release-gate"]["steps"])
+    env = {k: v for s in load()["jobs"]["release-gate"]["steps"] for k, v in s.get("env", {}).items()}
+    assert 'refs/tags/$TAG' in run and 'TRIGGERING_ACTOR' in env and env["OWNER_ID"] == "22817822"
+    assert '"$ACTOR_ID" = "$OWNER_ID"' in run and '"$trig_id" = "$OWNER_ID"' in run
 
 
 @needs_workflow
 def test_the_runner_is_pinned_like_the_test_workflow():
     for name, job in load()["jobs"].items():
-        assert job["runs-on"] == "ubuntu-24.04", name
+        assert job["runs-on"] == ["self-hosted", "linux", "x64", "mdp-linux"], name

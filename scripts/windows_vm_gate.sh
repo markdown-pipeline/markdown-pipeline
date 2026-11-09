@@ -207,7 +207,10 @@ schtasks /run /tn mdpshow 2>&1 | Out-Null
 PS
   cmd_copy "$tmp/start_show.ps1" C:/Users/tester/ >/dev/null 2>&1 || true
   cmd_ssh 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\tester\start_show.ps1' >/dev/null 2>&1 || true
-  sleep 8
+  # MD-184: wait until the console window really exists (right after the install the machine is busy and a fixed 8 s showed only the desktop), then let it paint
+  local waited=0
+  until cmd_ssh 'powershell -NoProfile -Command "if (Get-Process powershell | Where-Object { $_.MainWindowTitle -ne \"\" }) { exit 0 } else { exit 1 }"' >/dev/null 2>&1 || [ "$waited" -ge 90 ]; do sleep 5; waited=$((waited + 5)); done
+  sleep 4
   cmd_screenshot "$OUT/shot-$name.png" >/dev/null 2>&1 || true
   cmd_ssh 'powershell -NoProfile -Command "Get-Process powershell | Where-Object { $_.MainWindowTitle -ne \"\" } | Stop-Process -Force"' >/dev/null 2>&1 || true
   rm -rf "$tmp"
@@ -248,7 +251,7 @@ PS
   printf '{"phase":"before","check":"install","status":"%s","seconds":0,"detail":"%s"}\n' "$install_ok" "$(tail -1 <<< "$installed" | tr -d '"\\\r')" > "$out/host-results.jsonl"
   [ "$install_ok" = PASS ] || { cp "$out/host-results.jsonl" "$out/results.jsonl"; python3 "$APPDIR/scripts/windows_gate_report.py" "$out" "$stamp" "$commit" "$(basename "$wheel")" "$wheel_sha" "$ISO_SHA256" "$(expiry_note 2>&1 | head -1)" "unknown (not installed)" || true; die "the candidate build could not be installed in the machine"; }
   windows_build="$(cmd_ssh 'cmd /c ver' 2>/dev/null | tr -d '\r' | grep -i version | head -1)"
-  printf '%s\n' "$installed" > "$tmp/install.txt"; put_shot_text install "$tmp/install.txt"
+  printf '%s\n' "$installed" > "$tmp/install.txt"; put_shot_text install "$tmp/install.txt"; cp "$tmp/install.txt" "$out/install-output.txt"
   show_shot install
 
   log "phase before (in the desktop session): sync, background on/off, login item, stop during a sync"

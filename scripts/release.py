@@ -9,7 +9,8 @@ For the next fix release: raise ``version`` in pyproject.toml, run ``uv lock`` a
 rewrites the lock's version string; this script refuses to build while they differ), run the tests, run this with --publish. The public repo name is a setting
 (``--repo`` or MDPIPELINE_RELEASE_REPO) because it may still change. Only the wheel is attached: no sdist, so tests and docs stay private.
 Before anything is published the wheel is checked: only the package, no tests/docs/scripts/lock files, no keys or tokens inside, and the public
-GitHub App Client ID present (MD-129). The PostHog project key is public and ingest-only; it ships on purpose.
+GitHub App Client ID present (MD-129).
+After the release is on PyPI (MD-210): bump ``mdpipeline==X`` in glama.json ``buildSteps`` to the new version, and tell the owner to run Build & release in the Glama Admin tab. The PostHog project key is public and ingest-only; it ships on purpose.
 """
 from __future__ import annotations
 

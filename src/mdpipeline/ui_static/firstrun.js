@@ -71,12 +71,29 @@ function frError() {
   return `<div class="vneed err" id="fr-error" role="alert"><span aria-hidden="true">✕</span> <b>${esc(FR.error.headline)}</b> ${esc(FR.error.fix || "")}${help}${FR.error.kind === "data_center" ? fbDataCenterButton() : ""}</div>`;
 }
 
+/* MD-215 AC8: ONE guarantee for every redraw of a first-run step, whatever causes it (the poll, a server reply, a review arriving, anything added later):
+   what the person typed (value), where they are (focus) and where the cursor is survive, and a value from the server never replaces what they typed.
+   It is done here, at the render, not in each caller. Only on the SAME step: a new step is drawn from its own state. */
+let frDrawnStep = null;
+function frCaptureTyped() {
+  if (frDrawnStep !== FR.step) { forgetTyped($("main")); return null; }
+  return captureTyped($("main"));          // MD-216: the shared guard (app.js), here only the same-step rule
+}
+
+function frRestoreTyped(typed) {
+  restoreTyped($("main"), typed);
+}
+
 function renderFirstRun() {
   if (!FR) return;
   const a = document.activeElement, atTop = !a || a === document.body || (a.matches && a.matches("#main h1"));     // a background read re-renders: keep the focus on the heading
+  const typed = frCaptureTyped();
   renderTop();
   const body = { start: frStart, connect: frConnect, scope: frScope, folder: frFolder, target: frTarget, review: frReview, ready: frReady }[FR.step]();
   $("main").innerHTML = `<div class="fr">${FR.step === "ready" ? "" : frStepper()}${body}</div>`;
+  frRestoreTyped(typed);
+  frDrawnStep = FR.step;
+  for (const t of typed || []) if (t.focus) return frVaultTrack();                                       // the person is in a field: leave the focus there
   if (atTop) { const h = document.querySelector("#main h1"); if (h) h.focus(); }
   frVaultTrack();
 }
@@ -172,7 +189,7 @@ function frFolder() {
     <p class="fr-lede">We read the Markdown and text files in it, and in its subfolders. We never change them.</p>
     <form class="card fr-form" data-fr-form="folder" novalidate>
       <div class="field"><label for="fr-path">Folder path</label>
-        <span class="fr-pathrow"><input id="fr-path" data-fr-bind="path" value="${esc(FR.path)}" placeholder="~/notes/team-wiki" autocomplete="off" spellcheck="false">${brBrowseButton("fr-path", "source", "the folder")}</span>
+        <span class="fr-pathrow"><input id="fr-path" data-fr-bind="path" value="${esc(FR.path)}" placeholder="~/notes/team-wiki" autocomplete="off" spellcheck="false">${browseButton("fr-path", "source", "the folder")}</span>
         <span id="fr-folder-msg" aria-live="polite">${msg}</span>
         <span class="hint">Tip: drag the folder from your file manager into this field.</span></div>
       ${frError()}
@@ -239,9 +256,13 @@ async function frTargetEnter() {
   const r = await api("POST", "/api/first-run/dest-check", { ...frBodyCore(), dest: FR.dest });
   if (!FR || FR.step !== "target" || !r.ok) return;
   FR.suggested = r.data.suggested;
-  if (!FR.dest) FR.dest = FR.suggested;
+  const field = $("fr-dest");
+  if (!FR.dest) {                         // MD-215: an untouched field gets the suggestion IN PLACE; the field is never rebuilt, so focus and typing survive
+    FR.dest = FR.suggested;
+    if (field) { field.value = FR.dest; if (document.activeElement === field) field.select(); }      // focused: typing replaces the suggestion
+  }
   FR.destCheck = r.data;
-  if (FR.dest !== FR.suggested) frCheckDestSoon(); else renderFirstRun();
+  if (FR.dest !== FR.suggested) frCheckDestSoon(); else if (field) frPaintDest(); else renderFirstRun();
 }
 
 let frDestTimer;
@@ -299,16 +320,20 @@ function frGithubCardBody() {
       ${ready ? "" : `<span class="muted small" id="fr-repo-why">Choose a repository first.</span>`}</div>${note}</div>`;
 }
 
-function frTarget() {
+function frTargetLede() {
   const n = FR.review && FR.review.ok ? FR.review.count : null;
-  const lede = n === null ? "We're still counting what to write. Meanwhile, pick where the files go. Your agents read them from there."
+  return n === null ? "We're still counting what to write. Meanwhile, pick where the files go. Your agents read them from there."
     : `${plural(n, "Markdown file")} ${n === 1 ? "is" : "are"} ready to write. Pick where they go. Your agents read them from there.`;
+}
+
+function frTarget() {
+  const lede = frTargetLede();
   const dir = FR.target === "directory", gh = FR.target === "github", on = frGithubOffered();
   const folder = `<section class="card fr-pick${dir ? " chosen" : ""}" data-card="folder" aria-labelledby="fr-h-folder">
       <h3 id="fr-h-folder"><span class="fr-ico" aria-hidden="true">▤</span>A folder on this computer</h3>${dir ? `<span class="fr-tag">Your choice</span>` : ""}
       <p>Your agent on this computer reads the files from here.</p>
       <label for="fr-dest">Output folder</label>
-      <span class="fr-pathrow"><input id="fr-dest" data-fr-bind="dest" value="${esc(FR.dest)}" autocomplete="off" spellcheck="false">${brBrowseButton("fr-dest", "output", "the output folder")}</span>
+      <span class="fr-pathrow"><input id="fr-dest" data-fr-bind="dest" value="${esc(FR.dest)}" autocomplete="off" spellcheck="false">${browseButton("fr-dest", "output", "the output folder")}</span>
       <span id="fr-dest-msg" aria-live="polite">${frDestMessage()}</span>
       <div class="fr-cardact"><button type="button" class="btn" data-fr="use-folder" ${FR.destCheck && FR.destCheck.ok ? "" : "disabled"}>${dir ? "Continue with this folder" : "Use this folder"}</button><span class="muted small">No sign-in</span></div></section>`;
   const repo = on
@@ -319,7 +344,7 @@ function frTarget() {
       <p><b>Not available in this build:</b> GitHub sign-in isn't set up. Use a folder now; you can add a repo later in Advanced setup.</p>
       <div class="fr-cardact"><button type="button" class="btn" disabled>Sign in with GitHub</button></div></section>`;
   return `<h1 class="fr-title" tabindex="-1">Where should your files go?</h1>
-    <p class="fr-lede" aria-live="polite">${lede}</p>
+    <p class="fr-lede" id="fr-lede" aria-live="polite">${lede}</p>
     <div class="fr-cards" role="group" aria-label="Where the files go">${folder}${repo}</div>
     <div class="fr-actions fr-left"><button class="btn" data-fr="back">Back</button></div>`;
 }
@@ -361,9 +386,10 @@ function frReview() {
   const where = gh ? `<span class="mono">${esc(v.dest.repo)}</span>` : `<span class="mono">${esc(frHome(v.dest.path))}</span>`;
   const toSub = gh ? `Your GitHub repo · branch ${esc(v.dest.branch)} · one commit per sync. Your team's agents read the files from there.`
     : `Your output folder · ${v.dest.exists ? "already exists" : "new, created when you press Write"}. Your agent on this computer reads the files from here.`;
-  const then = sample ? "The sample doesn't sync by itself. You can remove it in one click."
+  const thenText = sample ? "The sample doesn't sync by itself. You can remove it in one click."
     : gh ? "Checks for changes every hour and commits them, including deletions. It keeps running when this window is closed and starts when you log in to your desktop. You can turn it off any time."
       : "Checks for changes every hour, including deletions. It keeps running when this window is closed and starts when you log in to your desktop. You can turn it off any time.";
+  const then = S.state && S.state.os === "windows" ? thenText.replace("log in to your desktop", "sign in to Windows") : thenText;          // MD-181 AC5: marketing MM-135, Windows only
   const first = v.first.map((t, i) => `<li>${esc(t)}${v.paths && v.paths[i] ? ` <span class="mono muted small">→ ${esc(v.paths[i])}</span>` : ""}</li>`).join("");
   const example = v.example ? `<div><h3 class="fr-h3">Example file: ${esc(v.example.name)}</h3><pre id="fr-example" class="snip">${esc(v.example.text)}</pre>
       <p class="muted small">The top block tells your agent where each file came from.</p></div>` : "";
@@ -650,6 +676,8 @@ async function frLoadReview(force) {
   FR.reviewing = false;
   FR.review = r.ok ? r.data : { ok: false, errors: [{ message: (r.data && r.data.error) || "We couldn't read the source." }] };
   frTrackDryRun();
+  const lede = FR.step === "target" && $("fr-lede");
+  if (lede) { lede.textContent = frTargetLede(); return; }        // MD-215: the target step has fields the person may be typing in: change the count line only
   const keep = document.activeElement && document.activeElement.id;
   renderFirstRun();
   if (keep && $(keep) && $(keep).setSelectionRange) { const el = $(keep); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }

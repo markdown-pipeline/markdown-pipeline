@@ -41,9 +41,12 @@ def page(browser):
     # script errors must never happen; HTTP 4xx responses (blocked/validation) are expected app flows
     pg.on("console", lambda m: errors.append(m.text) if m.type == "error" and "Failed to load resource" not in m.text else None)
     pg.errors = errors
+    network = []           # MD-217: the page's own resources that failed (a script that did not load); "Failed to load resource" is hidden above, so this says which one
+    pg.on("requestfailed", lambda r: network.append(f"FAILED {r.url} {r.failure}"))
+    pg.on("response", lambda r: network.append(f"HTTP {r.status} {r.url}") if r.status >= 500 or (r.status >= 400 and r.url.endswith((".js", ".css", ".html"))) else None)
     yield pg
     ctx.close()
-    assert errors == [], errors
+    assert errors == [], (errors, network)
 
 
 def shot(page, name):

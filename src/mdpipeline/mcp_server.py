@@ -128,7 +128,9 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
             raise ToolError(str(exc)) from exc
 
     @server.tool(name="sync_status", description="How fresh is the brain? Per pipeline: status, last run (time, result, counts), "
-                 "conflicts, big-change guard state and age since the last successful sync, plus the overall brain age.")
+                 "conflicts, big-change guard state and age since the last successful sync, plus the overall brain age. Every pipeline and the top level carry "
+                 "last_success_at (ISO 8601, UTC). When background sync is not running the reply has stale: true, stale_reason and message_for_user: "
+                 "quote message_for_user to the person as is, because their files may be out of date.")
     def sync_status_tool(pipeline: str | None = None) -> dict:
         try:
             brain = provide()

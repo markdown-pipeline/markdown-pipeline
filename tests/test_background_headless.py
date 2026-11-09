@@ -180,7 +180,7 @@ def test_any_mdpipeline_command_starts_it_when_it_is_on_but_not_running(app_data
     calls = []
     monkeypatch.setattr(background, "ensure_running", lambda **kw: calls.append(kw))
     cli.self_heal_background(command)
-    assert calls == [{}]
+    assert calls == [{"via": {"mcp": "mcp", "ui": "app"}.get(command, "cli")}]          # MD-212: which door found it dead (background_self_healed)
 
 
 @pytest.mark.parametrize("command", ["background", "uninstall"])

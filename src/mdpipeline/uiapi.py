@@ -5,7 +5,7 @@ import json
 import os
 import time
 
-from . import changes, sample
+from . import changes, install_info, sample
 from .brain import Brain
 from .config import Config, Pipeline, load_config
 from .engine import sync_all, sync_pipeline
@@ -163,6 +163,7 @@ def state_view(brain: Brain, now: float | None = None, running: tuple[str, ...] 
             "age_seconds": s["age_seconds"],
             "last_run": {"ts": last["ts"], "trigger": last["trigger"], "result": last["result"], "counts": last["counts"]} if last else None,
             "summary": _row_summary(s, p),
+            "front_matter_warnings": s.get("front_matter_warnings", []),      # MD-201 AC5: the last run's, shown as one amber note
             "owned_files": s["owned_files"],
             "pending_approval": bool(s.get("pending_approval")),
             "syncing": p.name in running,
@@ -191,15 +192,15 @@ def state_view(brain: Brain, now: float | None = None, running: tuple[str, ...] 
     return {"brain": {"path": str(brain.root), "raw_md_files": raw_md}, "pipelines": rows, "badge": badge,
             "summary": summary, "github_app": github_app_view(), "usage": usage_summary(), "syncing": is_locked(brain), "running": list(running), "state_error": state_error,
             "connect": all_snippets(brain), "brain_age_seconds": status["brain_age_seconds"], **version_view(brain),
-            "notices": active_notices(brain), "background": background_view()}
+            "notices": active_notices(brain), "background": background_view(brain), "os": install_info.os_name()}
 
 
 # --- scheduled sync (MD-121) -------------------------------------------------------------------
-def background_view() -> dict:
+def background_view(brain: Brain | None = None) -> dict:
     """The background process as Settings and Home show it: the person's choice, whether it runs, and whether the plain-words announcement
     is still waiting to be acknowledged (it stays on screen across reloads until OK, Change or Turn off)."""
     from . import autostart, background
-    from .scheduler import ANNOUNCEMENT
+    from .scheduler import announcement
     from .schedulestore import SchedulerStore
 
     state = SchedulerStore().read()["background"]
@@ -211,14 +212,25 @@ def background_view() -> dict:
     view["version"] = background.running_version()                         # MD-204: which version the running process is (None when none runs)
     view["installed_version"] = __version__
     view["outdated"] = bool(view["running"] and background.is_outdated())
+    view["restarting"] = bool(view["outdated"] and background.restart_pending())            # MD-218: asked for already: Settings says so instead of asking
     view["linger_hint"] = view["enabled"] and autostart.linger_hint()
     from .scheduler import linger_notice_hidden
 
     view["linger_notice"] = bool(view["enabled"] and not linger_notice_hidden() and autostart.linger_notice())
     if view["linger_hint"]:
         view["linger_text"] = autostart.LINGER_LINE
+    view["no_login_start"] = bool(view["enabled"] and autostart.cannot_start_at_login())      # MD-212 (AC3)
+    if view["no_login_start"]:
+        view["no_login_start_text"] = autostart.NO_LOGIN_START_LINE
+    view["not_running"] = bool(background.not_running())                    # MD-212 (AC7): on, announced, nothing runs and no heartbeat within the grace
+    if view["not_running"] and brain is not None:
+        import time as _time
+
+        from .status import last_update_phrase, newest_success_ts
+
+        view["last_update"] = last_update_phrase(newest_success_ts(brain), _time.time())
     if pending:
-        view["announcement"] = ANNOUNCEMENT
+        view["announcement"] = announcement()
     return view
 
 
@@ -229,16 +241,20 @@ def set_schedule_view(brain: Brain, name: str, interval: object) -> dict:
     return {"name": name, "schedule": str(interval), "changed": changed}
 
 
-def set_background_view(enabled: object) -> dict:
+def set_background_view(enabled: object, brain: Brain | None = None) -> dict:
     from . import scheduler
 
     if not isinstance(enabled, bool):
         raise ValueError("enabled must be true or false")
     if enabled:
+        from . import background, usage_hooks
+
+        if background.not_running():            # MD-212 (AC9): "Start sync again" on the notice; counted before it starts, so the notice is still up
+            usage_hooks.background_not_running_acted("app")
         scheduler.turn_on_background()
     else:
         scheduler.turn_off_background()
-    return background_view()
+    return background_view(brain)
 
 
 def _with_announcement(view: dict, results) -> dict:
@@ -294,6 +310,10 @@ def usage_event(body: object) -> dict:
     if event is None or "ui" not in event.surfaces:
         return {"queued": False}
     props = props if isinstance(props, dict) else {}
+    if name == "notice_shown" and props.get("kind") == "background_not_running":      # MD-212: once per outage, whatever the page redraws
+        from . import usage_hooks
+
+        return {"queued": usage_hooks.background_not_running_shown(str(props.get("surface", "")))}
     if name == "notice_shown" and props.get("kind") == "linger":      # MD-168: once per screen per day, whatever the page redraws
         from . import usage_hooks
 

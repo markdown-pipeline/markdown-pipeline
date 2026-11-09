@@ -28,7 +28,7 @@ from . import progress
 from .boundary import check_target_relpath
 from .brain import Brain
 from .config import Pipeline
-from .frontmatter import FrontMatterError, build_provenance, content_hash, merge_provenance, parse_document
+from .frontmatter import WARNING_KINDS, FrontMatterError, build_provenance, content_hash, merge_provenance, parse_document
 from .guard import GuardState, evaluate_guard
 from .naming import ORIGINAL, apply_name_policy, clash_suffix, collision_key, owned_prefixes, policy_label, windows_safe_target
 from .sources import SourceEntry, SourceScan, scan_source
@@ -63,6 +63,9 @@ class PlanItem:
     from_target: str | None = None   # rename: the owned file that moves to ``target``
     source_version: str | None = None   # MD-45: the connector's change marker of this item (None for folders)
     display: str = ""                   # the item's display path under its source when it differs from the identity (connectors)
+    warning: str = ""                   # MD-201: a front-matter kind (invalid-yaml, no-closing, not-mapping): skipped with a warning, not an error
+    warning_line: int | None = None     # MD-201: the line in the source file, when the parser gave one
+    had_copy: bool = False              # MD-201: an earlier copy of this file is in the output (it is kept as it is, so it is out of date)
     metadata_only: bool = False         # MD-56: an update whose body is unchanged (front-matter/provenance only): not counted by the guard
 
     def to_dict(self) -> dict:
@@ -141,6 +144,12 @@ class Plan:
         return out
 
     @property
+    def front_matter_warnings(self) -> list[dict]:
+        """MD-201: files skipped for invalid front matter. Paths only, never content; the same shape goes in the run log."""
+        return [{"source": i.source_label, "path": i.source_path, "line": i.warning_line, "kind": i.warning, "had_copy": i.had_copy}
+                for i in self.items() if i.warning]
+
+    @property
     def conflicts(self) -> list[dict]:
         return [{"type": i.conflict_type, "path": i.target, "source": i.source_label,
                  "source_path": i.source_path, "reason": i.reason} for i in self.items() if i.action == "conflict"]
@@ -156,7 +165,7 @@ class Plan:
 
     def to_dict(self) -> dict:
         return {"pipeline": self.pipeline, "counts": self.counts(), "metadata_only": self.metadata_only, "change_set_id": self.change_set_id,
-                "guard": self.guard.to_dict(), "notes": self.notes,
+                "guard": self.guard.to_dict(), "notes": self.notes, "front_matter_warnings": self.front_matter_warnings,
                 "groups": [{"label": g.label, "path": g.path, "status": g.status, "error": g.error,
                             "counts": g.counts(), "items": [i.to_dict() for i in g.items if i.action != "unchanged"]} for g in self.groups]}
 
@@ -269,8 +278,8 @@ def plan_pipeline(brain: Brain, pipeline: Pipeline, ps: PipelineState, *, now: f
             planned = _plan_candidate(brain, pipeline, ps, scan, entry, now, force, produced, claimed, force_paths, names, by_identity, pairs, scrub_paths, shallow, owned)
             if entry.relpath != entry.identity:
                 planned.display = entry.relpath
-            if planned.error:
-                errored.add((scan.label, entry.identity))
+            if planned.error or planned.warning:
+                errored.add((scan.label, entry.identity))      # failed or warned: its earlier copy is never treated as deleted
             group.items.append(planned)
 
     # recorded files whose source file is gone
@@ -505,7 +514,10 @@ def _plan_candidate(brain, pipeline, ps, scan, entry: SourceEntry, now, force, p
     try:
         merged = merge_provenance(data, prov)
     except FrontMatterError as exc:
-        return skip_error(f"front-matter error: {exc}", target)
+        if exc.kind not in WARNING_KINDS:
+            return skip_error(f"front-matter error: {exc}", target)
+        return PlanItem(label, rel, target, "skip", f"front-matter error: {exc}", warning=exc.kind, warning_line=exc.line,
+                        had_copy=any(r.source_label == label and r.source_path == rel for r in ps.files.values()))
     new_hash = content_hash(merged)
 
     def item(action: Action, reason: str = "", conflict: str | None = None, finalize: bool = False) -> PlanItem:

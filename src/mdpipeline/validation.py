@@ -9,7 +9,7 @@ from .boundary import PROTECTED_FOLDERS, check_target_relpath
 from .brain import Brain
 from .config import ON_DELETE_VALUES, Config, Pipeline
 from .destinations import conflicting_pipelines, credential_conflict_message, destination_key, destination_type, directory_root
-from .naming import apply_name_policy, check_name_policy, collision_key
+from .naming import apply_name_policy, check_name_policy, collision_key, windows_safe_target
 from .sources import SourceScan, scan_source
 from .template import TemplateError, render_target
 
@@ -44,10 +44,12 @@ def scan_pipeline(pipeline: Pipeline) -> list[SourceScan]:
 
 
 def target_for(pipeline: Pipeline, label: str, relpath: str, mtime: float, first_seen: str = "2000-01-01") -> str:
-    """Template target with the file-name policy applied (``first_seen`` only matters for date policies)."""
+    """Template target with the file-name policy applied (``first_seen`` only matters for date policies), and the Windows reserved-name rule
+    the planner applies (MD-182 AC2), so the editor's collision check matches the real plan. A brain that already holds a reserved name keeps
+    it in the plan (no renaming of existing paths); the editor does not see the brain's state, so it can differ only for that old case."""
     target = render_target(pipeline.target, pipeline=pipeline.name, source=label, relpath=relpath, mtime=mtime)
-    return apply_name_policy(target, pipeline.name_policy, pipeline.name_pattern, relpath=relpath,
-                             first_seen=first_seen, source=label, pipeline=pipeline.name)
+    return windows_safe_target(apply_name_policy(target, pipeline.name_policy, pipeline.name_pattern, relpath=relpath,
+                                                 first_seen=first_seen, source=label, pipeline=pipeline.name))
 
 
 def _real(path: str) -> str:

@@ -164,3 +164,28 @@ def test_removing_the_last_source_asks_why_on_the_start_screen_and_start_still_w
         page.get_by_role("button", name="Folder on this computer").click()
         expect(page.get_by_role("heading", name="Choose a folder")).to_be_visible()
     assert transport.events[0]["properties"]["answer"] == "just_testing"
+
+
+# MD-184: the page's 2-second poll must not rebuild the Start screen under a person who is typing ----------------------------------------------
+def test_the_poll_leaves_the_person_in_the_email_field_and_the_email_is_sent(page, brain, transport):
+    """The poll re-rendered every first-run step except connect/folder/review. A change on disk (a background process starting, a notice) landing
+    while someone typed replaced the input: the cursor was thrown out of the field and the rest of the typing, or all of it, was lost without a word."""
+    import os
+    import time
+
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        page.get_by_role("button", name="Something else").click()
+        page.get_by_label("Which tool?").fill("Linear")
+        field = page.get_by_label("Email me if we add it (optional)")
+        field.click()
+        brain.config_dir.mkdir(parents=True, exist_ok=True)
+        (brain.config_dir / "state.json").touch()
+        os.utime(brain.config_dir / "state.json", ns=(time.time_ns(), time.time_ns() + 7_000_000_000))   # the version the poll compares changes
+        page.wait_for_timeout(2600)                                                                   # more than one poll tick
+        assert page.evaluate("document.activeElement && document.activeElement.dataset.fbBind") == "email", "the poll threw the person out of the field"
+        page.keyboard.type("dana@acme.dev")
+        expect(field).to_have_value("dana@acme.dev")
+        page.get_by_role("button", name="Send request").click()
+        expect(page.locator("#fb-request")).to_contain_text("✓ Request sent")
+    assert transport.events[0]["properties"]["email"] == "dana@acme.dev"

@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 
 from . import usage
-from .usage_events import EVENTS, Count, EmailAddress, Enum, EnumList, Flag, Seconds, UserText, Version
+from .usage_events import EVENTS, AssetName, Count, EmailAddress, Enum, EnumList, Flag, Seconds, UserText, Version
 
 GROUPS: list[tuple[str, tuple[str, ...]]] = [
     ("A. Activation path and friction (time to value)", (
@@ -15,13 +15,13 @@ GROUPS: list[tuple[str, tuple[str, ...]]] = [
         "source_auth_completed", "source_auth_failed", "source_connected", "target_connected", "dry_run_viewed", "first_sync_completed",
         "error_shown", "help_opened", "session_ended_before_first_sync", "secret_store_used")),
     ("B. Value and habit", (
-        "agent_snippet_copied", "agent_read", "first_agent_read", "sync_completed", "sync_failed", "guard_triggered", "guard_resolved",
+        "agent_snippet_copied", "agent_read", "first_agent_read", "sync_completed", "sync_failed", "front_matter_warning", "guard_triggered", "guard_resolved",
         "view_mode_opened", "activity_viewed", "item_reason_viewed")),
     ("C. Expansion", ("source_added", "source_toggled", "source_removed", "pipeline_created")),
     ("D. Intent", ("source_scope_edited", "jira_project_pick", "folder_pick", "branch_pick")),
     ("E. Product additions (install, agent, schedule, requests, notices)", (
         "install_completed", "agent_connected", "try_started", "try_completed", "schedule_changed", "source_requested", "feedback_answered", "feedback_shown",
-        "notice_shown", "notice_hidden", "app_updated", "background_started")),
+        "notice_shown", "notice_hidden", "notice_acted", "app_updated", "background_started", "background_self_healed")),
 ]
 EXPLICIT_SENDS = ("source_requested", "feedback_answered")
 
@@ -47,6 +47,8 @@ def _allowed(rule) -> str:
         return f"seconds, 0 to {rule.max:,}, one decimal"
     if isinstance(rule, Flag):
         return "`true` / `false`"
+    if isinstance(rule, AssetName):
+        return "the file name of our release wheel, such as `mdpipeline-0.3.1-py3-none-any.whl` (nothing else is accepted)"
     if isinstance(rule, Version):
         return "a release number such as `0.3.1`"
     if isinstance(rule, UserText):

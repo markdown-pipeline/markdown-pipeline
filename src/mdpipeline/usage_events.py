@@ -77,6 +77,14 @@ class Version:
 
 
 @dataclass(frozen=True)
+class AssetName:
+    """The name of OUR release wheel, ``mdpipeline-<version>-py3-none-any.whl`` (MD-205). Any other text is dropped: a path or a mirror's file name cannot pass."""
+
+    def check(self, value):
+        return value if isinstance(value, str) and re.fullmatch(r"mdpipeline-\d{1,3}\.\d{1,3}\.\d{1,3}-py3-none-any\.whl", value) else None
+
+
+@dataclass(frozen=True)
 class UserText:
     """Words the person typed and pressed Send on (MD-123). Valid only on an ``explicit`` event: emit() can never produce it.
 
@@ -109,8 +117,9 @@ SOURCE_TYPE = Enum(("folder", "jira", "other"))
 TARGET_TYPE = Enum(("folder", "github"))
 ENTRY_POINT = Enum(("empty_state", "editor", "onboarding", "home", "activity", "view", "settings", "other"))
 AUTH_METHOD = Enum(("token", "oauth"))
-ERROR_CLASS = Enum(("auth", "rate_limit", "network", "guard_blocked", "target_write", "validation", "probe_rejected", "unknown"))
-UI_AREA = Enum(("home", "editor", "source", "target", "preview", "activity", "view", "settings", "onboarding", "other"))
+ERROR_CLASS = Enum(("auth", "rate_limit", "network", "guard_blocked", "target_write", "validation", "probe_rejected", "script_missing", "unknown"))
+UI_AREA = Enum(("home", "editor", "source", "target", "preview", "activity", "view", "settings", "onboarding", "page", "other"))
+SCRIPT = Enum(("browse", "firstrun", "other"))                                 # MD-217: which of the page's scripts did not load (a fixed list: no file names, paths or URLs)
 STEP = Enum(("consent", "choose_source", "authorize", "choose_scope", "choose_target", "preview", "first_sync", "connect_agent"))
 BUCKET = Enum(("0", "1-10", "11-100", "101-1000", "1000+"))
 AGENT = Enum(("claude_code", "codex", "cursor", "other"))
@@ -130,14 +139,20 @@ ANSWER = Enum(("yes", "partly", "no", "other",                                  
                "just_testing", "wrong_source", "not_useful", "privacy_worry", "broke",                  # removing the last source
                "reads_folder_directly",                                                                 # MD-168 M1: an agent that reads the folder, not through us
                "sign_in_trouble", "step_unclear", "source_missing", "just_looking"))                                    # MD-168 M3: what stopped the first run (no_time/privacy_worry/broke/other are shared)
-NOTICE_KIND = Enum(("sync_failed", "source_missing", "stale", "guard_blocked", "vault_locked", "vault_unsafe", "linger", "setup_mode"))
+NOTICE_KIND = Enum(("sync_failed", "source_missing", "stale", "guard_blocked", "vault_locked", "vault_unsafe", "linger", "setup_mode", "background_not_running"))
 NOTICE_SURFACE = Enum(("ready", "home", "settings", "cli"))                       # MD-168 M4: where the linger line was shown (a screen name, never content)
 LINGER_KIND = Enum(("linger",))
 YES_NO_UNKNOWN = Enum(("yes", "no", "unknown"))
 SECRET_STORE = Enum(("keychain", "file"))
+ACTED_KIND = Enum(("background_not_running",))                                  # MD-212: the notices a person can act on
+ACTED_VIA = Enum(("app", "cli"))
+SELF_HEAL_WHAT = Enum(("login_item", "process"))                                   # MD-212: what had to be put back
+SELF_HEAL_VIA = Enum(("cli", "app", "mcp"))                                         # MD-212: which door found it dead
 BACKGROUND_HOW = Enum(("login_item", "user_service", "app_start", "manual"))     # MD-165: how the background process was started
 OS_NAME = Enum(("macos", "linux", "windows", "other"))
 INSTALL_METHOD = Enum(("script", "pip", "pipx", "uv", "uvx", "registry", "source", "other"))
+DOWNLOAD_SOURCE = Enum(("github_release",))              # MD-205: where the downloaded asset came from; only our GitHub Releases are named
+DOWNLOAD_PROPS = {"release_version": Version(), "asset_name": AssetName(), "download_source": DOWNLOAD_SOURCE}
 SCOPE_KIND = Enum(("jql", "glob", "project"))
 FOLDER_METHOD = Enum(("browse", "typed", "recent"))
 BRANCH_METHOD = Enum(("picker", "typed"))
@@ -170,6 +185,8 @@ EVENTS: dict[str, Event] = {
     "background_started": Event("How the background process got started: the login item, the systemd user service, the app's own restart, or by hand (MD-165, H-HEADLESS-1: how many installs have no desktop login); whether a desktop session exists and whether systemd lingering is on (MD-168, yes/no/unknown, read only); no content",
                                 ("cli",), {"how": BACKGROUND_HOW, "desktop_session": YES_NO_UNKNOWN, "linger_enabled": YES_NO_UNKNOWN},
                                 {"how": "user_service", "desktop_session": "no", "linger_enabled": "no"}),
+    "background_self_healed": Event("How often background sync was found dead and put back (MD-212, H-BOOT-2): the login item re-created, or the process started again by a command, the app or an agent's mcp session; no paths, no names",
+                                    ("cli",), {"what": SELF_HEAL_WHAT, "via": SELF_HEAL_VIA}, {"what": "login_item", "via": "cli"}),
     "source_add_started": Event("Which source people reach for first", ("ui",), {"source_type": SOURCE_TYPE, "entry_point": ENTRY_POINT},
                                 {"source_type": "jira", "entry_point": "empty_state"}),
     "source_auth_started": Event("Credential friction", ("ui", "cli"), {"source_type": SOURCE_TYPE, "auth_method": AUTH_METHOD},
@@ -186,8 +203,9 @@ EVENTS: dict[str, Event] = {
     "first_sync_completed": Event("Time to first file", ("engine",),
                                   {"source_type": SOURCE_TYPE, "files_bucket": BUCKET, "duration_s": Seconds(), "ms_since_first_open": MS},
                                   {"source_type": "jira", "files_bucket": "11-100", "duration_s": 12.4, "ms_since_first_open": 241000}),
-    "error_shown": Event("Friction hotspots", ("ui",), {"ui_area": UI_AREA, "error_class": ERROR_CLASS},
-                         {"ui_area": "source", "error_class": "auth"}),
+    "error_shown": Event("Friction hotspots; the page's own scripts: ui_area `page`, error_class `script_missing` and which script did not load (MD-217, H-SCRIPT-1: does it happen to outside users)",
+                         ("ui",), {"ui_area": UI_AREA, "error_class": ERROR_CLASS, "script": SCRIPT},
+                         {"ui_area": "page", "error_class": "script_missing", "script": "firstrun"}),
     "help_opened": Event("Where users get confused", ("ui",), {"topic_id": HELP_TOPIC}, {"topic_id": "jira_token"}),
     "session_ended_before_first_sync": Event("Abandonment point", ("ui",), {"last_step": STEP}, {"last_step": "authorize"}),
     # --- B. value and habit (R4+ to R5) ---
@@ -202,6 +220,8 @@ EVENTS: dict[str, Event] = {
                             {"trigger": "manual", "source_type": "jira", "changed_bucket": "1-10", "deleted_bucket": "0", "duration_s": 3.2}),
     "sync_failed": Event("Reliability as users see it", ("engine",), {"error_class": ERROR_CLASS, "source_type": SOURCE_TYPE},
                          {"error_class": "network", "source_type": "jira"}),
+    "front_matter_warning": Event("H-FM-3: how common invalid hand-written front matter is in real folders (MD-201: a count of files, no path, no name, no line)", ("engine",),
+                                  {"files_count": Count(1000)}, {"files_count": 1}),
     "guard_triggered": Event("Big-change friction", ("engine",), {"cause": GUARD_CAUSE}, {"cause": "unknown"}),
     "guard_resolved": Event("Big-change friction", ("ui", "cli"), {"cause": GUARD_CAUSE, "action": GUARD_ACTION},
                             {"cause": "unknown", "action": "approved"}),
@@ -227,8 +247,10 @@ EVENTS: dict[str, Event] = {
     "branch_pick": Event("Do people choose a GitHub branch from the list or type it? (MD-143: a method, never a branch name)", ("ui",),
                          {"method": BRANCH_METHOD}, {"method": "picker"}),
     # --- product additions (spec §6) ---
-    "install_completed": Event("Install funnel", ("cli",), {"os": OS_NAME, "install_method": INSTALL_METHOD},
-                               {"os": "macos", "install_method": "script"}),
+    "install_completed": Event("Install funnel; when the install script downloaded a release asset, which one (MD-205: release downloads we can tell from other people's, with is_internal)",
+                               ("cli",), {"os": OS_NAME, "install_method": INSTALL_METHOD, **DOWNLOAD_PROPS},
+                               {"os": "macos", "install_method": "script", "release_version": "0.1.16", "asset_name": "mdpipeline-0.1.16-py3-none-any.whl",
+                                "download_source": "github_release"}),
     "agent_connected": Event("The aha step: the agent is connected", ("ui", "cli"), {"agent": AGENT, "method": METHOD},
                              {"agent": "claude_code", "method": "auto"}),
     "try_started": Event("Taste with sample data", ("ui", "cli"), {}, {}),
@@ -245,9 +267,14 @@ EVENTS: dict[str, Event] = {
                             ("ui",), {"question_id": QUESTION_ID}, {"question_id": "first_sync_expectation"}),
     "notice_shown": Event("Reliability notices users get; for the headless-Linux linger line (kind `linger`, MD-168, H-LINGER-1) also the screen it was shown on, at most once per screen per day; kind `setup_mode` (MD-196): an agent started the MCP server before any output folder was set up, at most once per server start",
                           ("ui", "engine", "cli", "mcp"), {"kind": NOTICE_KIND, "surface": NOTICE_SURFACE}, {"kind": "linger", "surface": "home"}),
+    "notice_acted": Event("The person acted on a notice: used 'Start sync again' in the app or ran the restart command while the 'background sync isn't running' notice was up (MD-212, H-BOOT-2: shown -> acted -> cleared); a fixed kind and door, nothing else",
+                          ("ui", "cli"), {"kind": ACTED_KIND, "via": ACTED_VIA}, {"kind": "background_not_running", "via": "app"}),
     "notice_hidden": Event("The person pressed Hide on the linger line on Home (MD-168, H-LINGER-1); a fixed kind and screen, nothing else",
                            ("ui",), {"kind": LINGER_KIND, "surface": NOTICE_SURFACE}, {"kind": "linger", "surface": "home"}),
-    "app_updated": Event("Update adoption", ("ui", "cli"), {"previous_version": Version()}, {"previous_version": "0.3.1"}),
+    "app_updated": Event("Update adoption; when `update` (a script install) downloaded a release asset, which one (MD-205)", ("ui", "cli"),
+                         {"previous_version": Version(), "install_method": INSTALL_METHOD, **DOWNLOAD_PROPS},
+                         {"previous_version": "0.3.1", "install_method": "script", "release_version": "0.3.2", "asset_name": "mdpipeline-0.3.2-py3-none-any.whl",
+                          "download_source": "github_release"}),
 }
 
 

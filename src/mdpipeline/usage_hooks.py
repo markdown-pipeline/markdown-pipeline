@@ -89,6 +89,9 @@ def sync_finished(res, pipeline) -> None:
             if files > 0 and store.note_first_sync():          # the clock is local and runs even without consent
                 usage.emit("first_sync_completed", source_type=kind, files_bucket=bucket(files), duration_s=seconds,
                            ms_since_first_open=store.ms_since_first_open())
+            skipped_for_front_matter = len(res.plan.front_matter_warnings) if res.plan else 0
+            if skipped_for_front_matter:          # MD-201 AC3: only how many files, never which
+                usage.emit("front_matter_warning", files_count=skipped_for_front_matter)
             if getattr(res, "approved", False):
                 usage.emit("guard_resolved", cause="unknown", action="approved")
         elif res.result == "error" and _locked(res):
@@ -236,6 +239,37 @@ def background_started(how: str) -> None:
         return
 
 
+def background_self_healed(what: str, via: str) -> None:
+    """MD-212 (H-BOOT-2): background sync was found dead and put back. ``what`` is the login item or the process; ``via`` the door (cli / app / mcp)."""
+    try:
+        usage.emit("background_self_healed", what=what, via=via)
+    except Exception:                   # noqa: BLE001
+        return
+
+
+def background_not_running_shown(surface: str) -> bool:
+    """MD-212 (H-BOOT-2): the "background sync isn't running" notice is on screen. Counted ONCE per outage, however many screens and commands show it;
+    the next heartbeat (``background.record_heartbeat``) ends the outage. Returns whether it was reported."""
+    try:
+        from .schedulestore import SchedulerStore
+
+        with SchedulerStore().update() as data:
+            if data["background"].get("not_running_shown"):
+                return False
+            data["background"]["not_running_shown"] = True
+        return usage.emit("notice_shown", kind="background_not_running", surface=surface)
+    except Exception:                   # noqa: BLE001
+        return False
+
+
+def background_not_running_acted(via: str) -> None:
+    """MD-212: the person used the 'Start sync again' action (via app) or the restart command (via cli) while the notice was up."""
+    try:
+        usage.emit("notice_acted", kind="background_not_running", via=via)
+    except Exception:                   # noqa: BLE001
+        return
+
+
 def linger_notice_shown(surface: str, now: datetime | None = None) -> bool:
     """MD-168 (H-LINGER-1): the linger line was on screen at ``surface`` (ready / home / settings / cli). Reported once per screen per UTC day,
     however often the screen redraws. Returns whether it was reported."""
@@ -269,7 +303,9 @@ def app_opened(*, first_only: bool = False) -> None:
             usage.emit("app_opened", first_open=first)
         if previous:
             _refresh_login_item()               # MD-171: after an update, an old login item is rewritten (with or without usage consent)
-            usage.emit("app_updated", previous_version=previous)
+            from .install_info import install_method
+
+            usage.emit("app_updated", previous_version=previous, install_method=install_method(), **store.take_download(usage.__version__))
     except Exception:                   # noqa: BLE001
         return
 

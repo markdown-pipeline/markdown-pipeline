@@ -63,6 +63,8 @@ class SyncResult:
         d = {"pipeline": self.pipeline, "trigger": self.trigger, "result": self.result, "dry_run": self.dry_run,
              "message": self.message, "counts": self.counts(), "errors": self.errors, "conflicts": self.conflicts,
              "duration_ms": self.duration_ms}
+        if self.plan and self.plan.front_matter_warnings:
+            d["front_matter_warnings"] = self.plan.front_matter_warnings
         if self.commit:
             d["commit"] = self.commit.to_dict()
         if self.clone:
@@ -112,6 +114,8 @@ def _log_run(log: ActivityLog, res: SyncResult, connectors: frozenset[str] = fro
     if res.plan:
         if res.plan.warnings:
             entry["warnings"] = res.plan.warnings
+        if res.plan.front_matter_warnings:
+            entry["front_matter_warnings"] = res.plan.front_matter_warnings
         entry["sources"] = {g.label: g.counts() for g in res.plan.groups}
         entry["guard"] = res.plan.guard.to_dict()
         entry["files"] = [log_file(i, i.source_label in connectors) for i in items if i.action != "unchanged" and not (i.action == "skip" and not i.error)]

@@ -59,7 +59,7 @@ def test_it_installs_the_latest_release_with_uv_records_how_and_says_how_to_open
     done = box.run()
     assert done.returncode == 0, done.stderr
     assert f"uv tool install --force --python 3.12 {WHEEL}" in box.calls
-    assert "mdpipeline install-note script" in box.calls
+    assert any(c.startswith("mdpipeline install-note script") for c in box.calls)       # MD-205: with the release flags when it downloaded one
     assert "Open it with" in done.stdout and "mdpipeline" in done.stdout
 
 
@@ -141,3 +141,17 @@ def test_a_failed_install_is_reported_and_nothing_is_recorded(box):
 def test_it_never_asks_for_sudo_or_writes_outside_the_users_home():
     text = SCRIPT.read_text(encoding="utf-8")
     assert "sudo" not in text and "/usr/local" not in text and "/etc/" not in text
+
+
+# MD-205: the script tells the app which release asset it downloaded (the app sends the event, with consent)
+def test_install_note_gets_the_release_version_and_asset_when_the_script_downloaded_one(box):
+    releases_curl(box)
+    result = box.run()
+    assert result.returncode == 0, result.stderr
+    assert "mdpipeline install-note script --release-version 0.1.7 --asset-name mdpipeline-0.1.7-py3-none-any.whl" in box.calls
+
+
+def test_install_note_gets_no_download_when_the_source_is_given(box):
+    result = box.run(MDPIPELINE_SOURCE="/some/folder")
+    assert result.returncode == 0, result.stderr
+    assert "mdpipeline install-note script" in box.calls and not any("--release-version" in c for c in box.calls)

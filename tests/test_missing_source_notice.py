@@ -156,7 +156,7 @@ def test_a_missing_source_alone_is_needs_you_in_the_row_the_view_status_and_the_
 def test_a_real_failure_stays_an_error_even_next_to_a_missing_source(brain, two, monkeypatch):
     a, b = two
     shutil.rmtree(a)
-    (b / "bad.md").write_text("---\nunclosed: [\n---\nbody\n")
+    (b / "bad.md").write_text("---\nprovenance: mine\n---\nbody\n")      # MD-201: bad YAML is a warning now; this is still a real file error
     sync_pipeline(brain, "p")
     row, view, hist = _row_and_view(brain)
     assert row["needs_you"] is False and view["needs_you"] is False

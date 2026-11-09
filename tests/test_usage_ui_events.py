@@ -97,7 +97,8 @@ def test_a_new_version_reports_app_updated_with_the_previous_one_only(brain, sha
     monkeypatch.setattr(usage, "__version__", "0.2.0")
     usage_hooks.app_opened()
     (updated,) = queued("app_updated")
-    assert own(updated) == {"previous_version": before} and updated["properties"]["app_version"] == "0.2.0"
+    assert own(updated)["previous_version"] == before and updated["properties"]["app_version"] == "0.2.0"
+    assert set(own(updated)) == {"previous_version", "install_method"}        # MD-205: no download properties unless the install script reported a download
     usage_hooks.app_opened()
     assert len(queued("app_updated")) == 1
 

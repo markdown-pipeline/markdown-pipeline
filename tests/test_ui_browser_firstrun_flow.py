@@ -133,7 +133,8 @@ def test_folder_to_folder_goes_to_written_files_with_a_review_that_only_confirms
         assert load_config(brain).pipelines == [] and not dest.exists()
         page.get_by_role("button", name=f"Write 7 files to {dest}").click()
         expect(page.locator("#fr-ready")).to_contain_text("7 files in")
-    assert len(list(dest.rglob("*.md"))) == 7
+        ready_text = page.locator("#fr-ready").inner_text()
+    assert len(list(dest.rglob("*.md"))) == 7, f"the page said: {ready_text!r}"        # MD-215: the page's own words next to the folder it was checked against
 
 
 def test_a_folder_to_folder_first_run_never_asks_for_a_passphrase_without_a_keychain(page, brain, notes, tmp_path, app_data):

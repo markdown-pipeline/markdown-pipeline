@@ -70,6 +70,40 @@ def test_keychain_reference_on_windows_says_so_in_marketings_words_and_runs_no_t
     assert str(exc.value) == WINDOWS_KEYCHAIN_TEXT
 
 
+# MD-180: the GitHub variant (marketing, MD-180 comment 11375). A GitHub target must not be told about "this Jira source".
+WINDOWS_KEYCHAIN_GITHUB_TEXT = ("keychain: references don't work on Windows, so this GitHub target can't read its token. Nothing was changed or deleted. "
+                                "Let the app keep the token instead: mdpipeline pipeline edit <pipeline> --replace-token (you will be asked for a new GitHub token, "
+                                "typing is hidden), or choose Edit on the pipeline in the app and enter a new token. Then sync again.")
+
+
+def test_keychain_reference_for_github_on_windows_gets_the_github_words(monkeypatch):
+    from mdpipeline import winacl
+
+    monkeypatch.setattr(winacl, "is_windows", lambda: True)
+    monkeypatch.setattr(credentials, "run_keychain", lambda cmd: (_ for _ in ()).throw(AssertionError("no keychain tool may run on Windows")))
+    with pytest.raises(CredentialError) as exc:
+        resolve_token("keychain:svc", purpose="github")
+    assert str(exc.value) == WINDOWS_KEYCHAIN_GITHUB_TEXT
+
+
+def test_a_github_target_with_a_keychain_credential_reports_the_github_words_on_windows(monkeypatch):
+    from mdpipeline import winacl
+    from mdpipeline.targetconfig import GitHubSpec, api_for
+
+    monkeypatch.setattr(winacl, "is_windows", lambda: True)
+    api = api_for(GitHubSpec(repo="o/r", credential="keychain:svc", branch="main"))
+    with pytest.raises(CredentialError) as exc:
+        api._token()
+    assert str(exc.value) == WINDOWS_KEYCHAIN_GITHUB_TEXT
+
+
+def test_the_command_in_the_github_words_really_parses():
+    from mdpipeline.cli import build_parser
+
+    args = build_parser().parse_args(["pipeline", "edit", "p", "--replace-token"])
+    assert args.replace_token is True
+
+
 def test_the_windows_keychain_error_is_an_auth_error_like_every_credential_error():
     assert issubclass(CredentialError, credentials.TargetAuthError)
 

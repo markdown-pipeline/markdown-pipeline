@@ -16,7 +16,17 @@ NAME_KEYS = ("original_name", "first_seen", "name_policy", "name_suffix")   # MD
 
 
 class FrontMatterError(ValueError):
-    """The source file's front-matter is malformed or conflicts with provenance."""
+    """The source file's front-matter is malformed or conflicts with provenance.
+
+    ``kind`` (MD-201): ``invalid-yaml``, ``no-closing`` and ``not-mapping`` are the author's mistakes and become a warning; ``other`` (a ``provenance``
+    key of the author's own, a file that is not UTF-8) stays an error. ``line`` is the 1-based line in the SOURCE file when the parser gives one."""
+
+    def __init__(self, message: str, kind: str = "other", line: int | None = None) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.line = line
+
+WARNING_KINDS = ("invalid-yaml", "no-closing", "not-mapping")
 
 
 def content_hash(data: bytes) -> str:
@@ -62,18 +72,20 @@ def _split(text: str) -> tuple[str, str, str | None, str]:
     for index in range(1, len(lines)):
         if lines[index].rstrip(" \t\r\n") in ("---", "..."):
             return bom, newline, "".join(lines[1:index]), "".join(lines[index + 1:])
-    raise FrontMatterError("front-matter starts with '---' but has no closing '---'")
+    raise FrontMatterError("front-matter starts with '---' but has no closing '---'", kind="no-closing")
 
 
 def _load_mapping(fm_text: str) -> dict:
     try:
         data = yaml.safe_load(fm_text)
     except yaml.YAMLError as exc:
-        raise FrontMatterError(f"front-matter is not valid YAML: {str(exc).splitlines()[0]}") from exc
+        mark = getattr(exc, "problem_mark", None)
+        line = mark.line + 2 if mark is not None else None       # 0-based inside the block, plus the opening '---' line, plus 1 to count from 1
+        raise FrontMatterError(f"front-matter is not valid YAML: {str(exc).splitlines()[0]}", kind="invalid-yaml", line=line) from exc
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise FrontMatterError("front-matter is not a key/value mapping")
+        raise FrontMatterError("front-matter is not a key/value mapping", kind="not-mapping", line=2)
     return data
 
 

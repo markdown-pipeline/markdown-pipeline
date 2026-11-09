@@ -164,12 +164,20 @@ def test_unreadable_source_file_is_a_reported_error_not_a_crash(brain, make_sour
         os.chmod(src / "bad.md", 0o644)
 
 
-def test_malformed_front_matter_is_a_reported_error_and_skipped(brain, make_source):
+def test_malformed_front_matter_is_a_skipped_warning_not_an_error(brain, make_source):
+    """MD-201 (was: a reported error): the file is still skipped, but it no longer fails the run."""
     src = make_source("docs", {"bad.md": "---\nkey: [oops\n---\nbody", "ok.md": "fine"})
     plan = do_plan(brain, Pipeline.new("p", [str(src)]))
     bad = next(i for i in plan.groups[0].items if i.source_path == "bad.md")
-    assert bad.action == "skip" and bad.error and "front-matter" in bad.reason
-    assert plan.counts()["errors"] == 1 and plan.counts()["created"] == 1
+    assert bad.action == "skip" and not bad.error and bad.warning == "invalid-yaml" and "front-matter" in bad.reason
+    assert plan.counts()["errors"] == 0 and plan.counts()["created"] == 1
+
+
+def test_a_provenance_key_of_the_authors_own_is_still_an_error(brain, make_source):
+    src = make_source("docs", {"mine.md": "---\nprovenance: mine\n---\nbody"})
+    plan = do_plan(brain, Pipeline.new("p", [str(src)]))
+    item = plan.groups[0].items[0]
+    assert item.error and not item.warning and plan.counts()["errors"] == 1
 
 
 def test_change_set_id_is_stable_and_changes_when_a_source_changes(brain, make_source):

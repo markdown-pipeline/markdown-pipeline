@@ -1,4 +1,20 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
-  "maintainers": ["avikoren"]
+  "maintainers": [
+    "avikoren"
+  ],
+  "baseImage": "debian:trixie-slim",
+  "buildSteps": [
+    "apt-get update && apt-get install -y --no-install-recommends python3 python3-venv",
+    "python3 -m venv /opt/mdp",
+    "/opt/mdp/bin/pip install mdpipeline==0.1.18"
+  ],
+  "cmdArguments": [
+    "mcp-proxy",
+    "--",
+    "/opt/mdp/bin/mdpipeline",
+    "--install-method",
+    "registry",
+    "mcp"
+  ]
 }

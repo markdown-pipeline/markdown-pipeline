@@ -147,11 +147,18 @@ def test_the_install_command_is_one_public_curl_line_that_needs_no_login():
 
 
 # --- MD-183: Windows ----------------------------------------------------------------------------------------------------------
-def test_on_windows_a_script_install_updates_by_running_the_powershell_installer_without_opening_the_app(ran, monkeypatch, capsys):
+def test_on_windows_a_script_install_updates_through_the_helper_with_the_powershell_installer_without_opening_the_app(ran, monkeypatch, capsys, tmp_path):
+    """MD-183: the command is still the PowerShell installer (told not to open the app), but it is run by the detached helper (tests/test_windows_update_helper.py),
+    never from inside the app: a running program's files are locked on Windows."""
+    from mdpipeline import winupdate
+
+    helped = []
+    monkeypatch.setattr(winupdate, "start", lambda command: helped.append(command) or tmp_path / "update.log")
     monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "script")
     monkeypatch.setattr(lifecycle.sys, "platform", "win32")
     assert cli.main(["update"]) == 0
-    (command,) = ran
+    assert ran == []
+    (command,) = helped
     assert command[:5] == ["powershell", "-NoProfile", "-ExecutionPolicy", "ByPass", "-Command"] and len(command) == 6
     assert command[5] == ("$env:MDPIPELINE_NO_OPEN='1'; irm " + lifecycle.INSTALL_PS1_URL + " | iex; exit $LASTEXITCODE")      # no `sh` on Windows; update must not open a window
 

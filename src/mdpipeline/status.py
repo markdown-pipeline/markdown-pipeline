@@ -61,6 +61,42 @@ def only_missing_sources(run: dict | None) -> bool:
     return bool(run) and run.get("result") == "error" and bool(errors) and all(e.get("category") in NEEDS_YOU_CATEGORIES for e in errors)
 
 
+RESTART_COMMAND = "mdpipeline schedule background restart"       # MD-212: confirmed in cli.py (starts the process when it is on and not running)
+
+
+def iso_utc(ts: float | None) -> str | None:
+    """MD-212: an epoch time as ISO 8601 UTC (``2026-11-06T10:00:00Z``), for the agent reading sync_status."""
+    return None if ts is None else datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def last_update_phrase(ts: float | None, now: float) -> str:
+    """MD-212: "3 hours ago (2026-11-06 08:15)" - the relative time first, the local date and time in brackets. ``never`` when nothing synced."""
+    if ts is None:
+        return "never"
+    seconds = max(0, now - ts)                                  # never negative after a clock jump
+    for unit, size in (("day", 86400), ("hour", 3600), ("minute", 60)):
+        if seconds >= size:
+            n = int(seconds // size)
+            relative = f"{n} {unit}{'' if n == 1 else 's'} ago"
+            break
+    else:
+        relative = "less than a minute ago"
+    return f"{relative} ({datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')})"
+
+
+def background_down_cli_text(ts: float | None, now: float) -> str:
+    """MD-212 (AC7, marketing's draft MM-170): consequence first, then the state, then the one next step."""
+    if ts is None:                      # marketing: no files exist yet, so "may be out of date" would be wrong
+        return f"Background sync isn't running, and nothing has synced yet. To start it: {RESTART_COMMAND}"
+    return f"Your files may be out of date: background sync isn't running. Last update: {last_update_phrase(ts, now)}. To start it again: {RESTART_COMMAND}"
+
+
+def newest_success_ts(brain: Brain) -> float | None:
+    """MD-212: the newest successful sync across the brain's pipelines (None when nothing synced)."""
+    times = [parse_ts(r["ts"]) for r in ActivityLog(brain).read(types={"run"}) if r["result"] in SUCCESS_RESULTS]
+    return max(times) if times else None
+
+
 def brain_status(brain: Brain, pipeline: str | None = None, now: float | None = None) -> dict:
     """Status of every pipeline (or one) plus the brain age. Each pipeline reports its own target (MD-78)."""
     now = now if now is not None else time.time()
@@ -111,6 +147,7 @@ def brain_status(brain: Brain, pipeline: str | None = None, now: float | None = 
             "target": target_info,
             "last_run": last,
             "last_success": success["ts"] if success else None,
+            "last_success_at": iso_utc(success_ts),                       # MD-212: always there, ISO 8601 UTC
             "age_seconds": max(0.0, now - success_ts) if success_ts is not None else None,         # MD-170: never negative after a clock jump
             "conflicts": _with_paths((last or {}).get("conflicts", []), ps) if status in ("conflicts",) else [],
             "guard": (last or {}).get("guard"),
@@ -118,10 +155,23 @@ def brain_status(brain: Brain, pipeline: str | None = None, now: float | None = 
             "owned_files": len(ps.files) if ps else 0,
             "sources": sources,
             "warnings": (last or {}).get("warnings", 0),
+            "front_matter_warnings": (last or {}).get("front_matter_warnings", []),      # MD-201: from the LAST run only, so an hourly run never piles them up
             "sources_note": f"{sum(1 for x in p.sources if not x.enabled)} of {len(p.sources)} sources off" if any(not x.enabled for x in p.sources) else "",
             "credential_conflict": {"with": [c.name for c in clash], "message": credential_conflict_message(p, clash)} if clash else None,
         })
-    return {"pipelines": out, "brain_age_seconds": max(0.0, now - newest_success) if newest_success is not None else None}
+    result = {"pipelines": out, "brain_age_seconds": max(0.0, now - newest_success) if newest_success is not None else None,
+              "last_success_at": iso_utc(newest_success), "stale": False}
+    from . import background
+
+    if background.not_running(now):         # MD-212 (AC7): the files may be out of date, and the agent can say so as is
+        if newest_success is None:
+            message = (f"Markdown Pipeline background sync isn't running, and nothing has synced yet. Ask the user to run `{RESTART_COMMAND}` or open the app.")
+        else:       # a human time, in UTC: the agent quotes this as is (the field last_success_at stays ISO 8601)
+            when = datetime.fromtimestamp(newest_success, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            message = (f"Markdown Pipeline background sync isn't running, so these files may be out of date. Last update: {when}. "
+                       f"Ask the user to run `{RESTART_COMMAND}` or open the app.")
+        result.update(stale=True, stale_reason="background_not_running", message_for_user=message)
+    return result
 
 
 def _with_paths(conflicts: list[dict], ps) -> list[dict]:

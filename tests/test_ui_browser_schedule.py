@@ -170,8 +170,11 @@ def test_the_controls_are_comfortable_targets_and_the_select_has_an_accessible_n
     with running_ui(one) as ui:
         open_app(page, ui)
         sel = page.locator('select[data-schedule="acme"]')
+        expect(sel).to_be_visible()          # wait for the render: bounding_box() is None until the element is laid out
         assert sel.bounding_box()["height"] >= 40
-        assert page.locator('[data-notice="sync_failed"]').get_by_role("button", name="Try now").bounding_box()["height"] >= 40
+        try_now = page.locator('[data-notice="sync_failed"]').get_by_role("button", name="Try now")
+        expect(try_now).to_be_visible()
+        assert try_now.bounding_box()["height"] >= 40
         assert page.get_by_role("combobox", name="Sync automatically (acme)").count() == 1
 
 

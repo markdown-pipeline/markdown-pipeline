@@ -12,6 +12,7 @@
 set -eu
 
 SOURCE="${MDPIPELINE_SOURCE:-}"
+DOWNLOADED=""
 RELEASES_URL="${MDPIPELINE_RELEASES_URL:-https://github.com/markdown-pipeline/markdown-pipeline}"
 
 case "$(uname -s)" in
@@ -51,13 +52,16 @@ if [ -z "$SOURCE" ]; then
       ;;
   esac
   TAG="${FINAL##*/}"
-  SOURCE="$RELEASES_URL/releases/download/$TAG/mdpipeline-${TAG#v}-py3-none-any.whl"
+  ASSET="mdpipeline-${TAG#v}-py3-none-any.whl"
+  SOURCE="$RELEASES_URL/releases/download/$TAG/$ASSET"
+  DOWNLOADED="--release-version ${TAG#v} --asset-name $ASSET"      # MD-205: only when we fetched a release asset; the app sends the event, with consent
 fi
 
 echo "Installing Markdown Pipeline ..."
 uv tool install --force --python 3.12 "$SOURCE"
 
-mdpipeline install-note script >/dev/null 2>&1 || true
+# shellcheck disable=SC2086
+mdpipeline install-note script $DOWNLOADED >/dev/null 2>&1 || true
 
 echo
 echo "Installed. Open it with:  mdpipeline"

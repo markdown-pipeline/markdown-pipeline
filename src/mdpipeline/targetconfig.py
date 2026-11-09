@@ -58,8 +58,8 @@ def api_for(spec: GitHubSpec) -> GitHubApi:
         if kind == "vault":
             cred = SignInCredential(name)
             return GitHubApi(cred.token, api_url=spec.api_url, allowed_hosts=(host,), renew=cred.renew, still_rejected=cred.still_rejected)
-        return GitHubApi(lambda: resolve_token(spec.credential), api_url=spec.api_url, allowed_hosts=(host,))
-    return GitHubApi(lambda: resolve_token(spec.credential), api_url=spec.api_url, allowed_hosts=(host,))
+        return GitHubApi(lambda: resolve_token(spec.credential, purpose="github"), api_url=spec.api_url, allowed_hosts=(host,))
+    return GitHubApi(lambda: resolve_token(spec.credential, purpose="github"), api_url=spec.api_url, allowed_hosts=(host,))
 
 
 @dataclass

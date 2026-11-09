@@ -34,6 +34,16 @@ def no_leaks(request):
 
 
 @pytest.fixture(autouse=True)
+def host_independent_login_start(request, monkeypatch):
+    """MD-212: whether this machine can start Markdown Pipeline at login depends on its systemd and desktop (the CI runner has neither, a developer's
+    machine has both), so no test may depend on it: pinned to False unless the test says it needs the real check (``@pytest.mark.real_login_start``)."""
+    if request.node.get_closest_marker("real_login_start") is None:
+        from mdpipeline import autostart
+
+        monkeypatch.setattr(autostart, "cannot_start_at_login", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def app_data(tmp_path, monkeypatch):
     """The app's data directory (the vault lives there) and its keychain are fakes for every test: nothing real is touched."""
     from fake_keychain import FakeKeychain
@@ -183,6 +193,25 @@ def pytest_collection_modifyitems(config, items):
         if sys.platform == "win32":
             _NOT_ON_WINDOWS.append((item.nodeid, reason))
             item.add_marker(pytest.mark.skip(reason="Windows: " + reason))
+
+
+WRITE_TEST_FILES = ("test_ui_browser_firstrun", "test_ui_browser_agents")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """MD-215: a failed first-run browser test says where the files actually are (the typed folder, the default folder under the test HOME, the brain's log),
+    so a "7 files in ..." on the page next to an empty typed folder can be told apart: written elsewhere, or written after the check."""
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call" or not report.failed or not item.path.name.startswith(WRITE_TEST_FILES):
+        return
+    tmp = item.funcargs.get("tmp_path")
+    if tmp is None:
+        return
+    from wherefiles import report as where
+
+    report.sections.append(("where the files are", where(tmp, home=os.environ.get("HOME") and Path(os.environ["HOME"]), brain=item.funcargs.get("brain"))))
 
 
 def pytest_terminal_summary(terminalreporter):

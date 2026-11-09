@@ -155,7 +155,7 @@ async function poll() {
   try {
     const v = await api("GET", "/api/version");
     if (v.ok && (v.data.version !== S.version || v.data.syncing !== S.lastSyncing)) {
-      if (S.screen === "editor" || (S.screen === "firstrun" && FR && ["connect", "folder", "review"].includes(FR.step))) { // do not disturb the form: just keep the badge fresh
+      if (S.screen === "editor" || (S.screen === "firstrun" && FR && FR.step !== "ready")) { // do not disturb the form (every first-run step has fields; MD-184 added start, scope and target): just keep the badge fresh
         const st = await api("GET", "/api/state");
         if (st.ok) { S.state = st.data; S.version = st.data.version; S.lastSyncing = st.data.syncing; renderTop(); }
       } else {
@@ -195,10 +195,67 @@ function renderTop() {
     <div class="summary" id="summary">${summary}</div>`;
 }
 
+/* MD-216 (the MD-215 AC8 guard, shared): ONE guarantee for every redraw of a screen, whatever causes it (the 2 s poll, an action's result, anything added later):
+   what the person typed (value), where they are (focus) and where the cursor is survive, and a value from the page state or the server never replaces what
+   they typed. Done here, at the render, not in each caller. Only on the SAME screen (a new screen is drawn from its own state). The values are held in a
+   local variable for the duration of one redraw: never in the page state, storage, requests or logs, so passwords and tokens are kept the same way. */
+const typedKey = (el) => el.id || (el.dataset && (el.dataset.frBind ? "fr:" + el.dataset.frBind : el.dataset.fbBind ? "fb:" + el.dataset.fbBind : "")) || "";
+const isTypedField = (el) => el.matches && el.matches("input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), textarea, select");
+
+/* A field a redraw removes (the "counting" card replaces a form while a read is under way) and a later redraw re-creates: the person's value and focus come back, ONCE,
+   then the entry is dropped. It is held per root in this variable only (never in the page state, storage, requests or logs), forgotten when the screen or step
+   changes (``forgetTyped``) and after ORPHAN_MS. */
+const ORPHAN_MS = 5 * 60 * 1000;
+let orphanTyped = {};
+const forgetTyped = (root) => { if (root && root.id) delete orphanTyped[root.id]; };
+
+function captureTyped(root) {
+  if (!root) return null;
+  const typed = [], active = document.activeElement;
+  root.querySelectorAll("input, textarea, select").forEach((el) => {
+    const key = typedKey(el);
+    if (!key || !isTypedField(el) || el.value === el.defaultValue && el !== active) return;       // untouched fields are drawn from the page state as before
+    typed.push({ key, value: el.value, focus: el === active, start: el.selectionStart, end: el.selectionEnd, dir: el.selectionDirection });
+  });
+  const now = Date.now();
+  for (const o of (orphanTyped[root.id] || [])) {                                                    // removed by an earlier redraw: still waiting to come back
+    if (now - o.at < ORPHAN_MS && !typed.some((t) => t.key === o.key)) typed.push(o);
+  }
+  return typed;
+}
+
+function restoreTyped(root, typed) {
+  if (!root || !typed) return;
+  const waiting = [], now = Date.now();
+  typed.forEach((t) => {
+    const el = [...root.querySelectorAll("input, textarea, select")].find((e) => typedKey(e) === t.key);
+    if (!el || !isTypedField(el)) { waiting.push({ ...t, at: t.at || now }); return; }               // not drawn this time: keep it for one re-creation
+    if (el.disabled) return;           // a field the draw deliberately cleared and locked (a token that was checked: "not shown again") stays empty
+    if (el.value !== t.value) el.value = t.value;
+    if (t.focus) {
+      el.focus();
+      try { if (t.start !== null && el.setSelectionRange) el.setSelectionRange(t.start, t.end, t.dir || "none"); } catch (e) { /* a type without a cursor */ }
+    }
+  });
+  if (root.id) { if (waiting.length) orphanTyped[root.id] = waiting; else delete orphanTyped[root.id]; }
+}
+
+let drawnScreen = null;
+const screenKey = () => [S.screen, S.view && S.view.name, S.actPipeline].join(":");
+
 function render() {
   if (!S.state) return;
   if (S.screen === "home" && !S.state.pipelines.length) enterFirstRun();          // MD-118: nothing set up yet -> the guided first run
-  if (S.screen === "firstrun" && FR) return renderFirstRun();
+  if (S.screen === "firstrun" && FR) { drawnScreen = null; return renderFirstRun(); }       // the next screen is drawn from its own state, never from first run's fields
+  const key = screenKey();
+  if (drawnScreen !== key) forgetTyped($("main"));
+  const typed = drawnScreen === key && S.screen !== "editor" ? captureTyped($("main")) : null;      // the editor updates its fields in place
+  drawScreen();
+  restoreTyped($("main"), typed);
+  drawnScreen = key;
+}
+
+function drawScreen() {
   renderTop();
   if (S.screen === "editor" && S.ed) {
     if (!$("f-template")) renderEditor(); else renderEditorLive();
@@ -274,6 +331,42 @@ function errLine(p) {
   return `<div class="errline">${esc(p.summary)} <span class="safe">Nothing it owns was deleted.</span> <span>Fix the path in <a href="#" data-act="edit" data-name="${esc(p.name)}">Edit</a> or restore the folder, then Sync now.</span></div>`;
 }
 
+function fmWarnLine(p) {      // MD-201 AC4/AC5: one amber note from the last run. Words: marketing review MM-166 (Jira comment 11357). Whole strings per case, no chained .replace().
+  const w = p.front_matter_warnings || [];
+  if (!w.length) return "";
+  const many = w.length > 1;
+  const kinds = new Set(w.map((x) => x.kind));
+  const near = (x) => (x.kind === "invalid-yaml" && x.line ? `near line ${x.line}` : "");
+  const OLD = "The copy in your output folder is from before your last edit.";
+  const shown = w.slice(0, 3).map((x) => {
+    const n = near(x);
+    const old = x.had_copy && many ? " (old copy in your output folder)" : "";
+    return `<span class="mono">${esc(x.path)}</span>${n ? ", " + n : ""}${old}`;
+  });
+  const more = w.length > 3 ? `<br>and ${w.length - 3} more` : "";
+  const title = many ? `${w.length} files skipped: their front matter (the --- block at the top) has a mistake`
+    : "1 file skipped: its front matter (the --- block at the top) has a mistake";
+  const x0 = w[0];
+  const allLined = w.every((x) => near(x));
+  let lead = "", body;
+  if (!many) {
+    lead = x0.kind === "not-mapping" ? ". Its front matter is not made of key: value lines." : ".";
+    const fix = x0.kind === "no-closing" ? "Add the closing --- line, or exclude the file."
+      : x0.kind === "not-mapping" ? "Rewrite it as key: value lines, or exclude the file."
+      : near(x0) ? `Check ${near(x0)} (the mistake can be on the line before), or exclude the file.`
+      : "Check the front matter, or exclude the file.";
+    body = `${shown[0]}${lead} Your other files synced and this file was not changed. ${fix}${x0.had_copy ? " " + OLD : ""}`;
+  } else {
+    const same = kinds.size === 1;
+    const fix = same && kinds.has("no-closing") ? "Add the closing --- line to each file, or exclude the files."
+      : same && kinds.has("not-mapping") ? "Rewrite them as key: value lines, or exclude the files."
+      : same && allLined ? "Check near those lines (a mistake can be on the line before), or exclude the files."
+      : "Check the front matter in each file, or exclude the files.";
+    body = `${shown.join("<br>")}${more}<br>Your other files synced and these files were not changed. ${fix}`;
+  }
+  return `<div class="fmwarn" data-fmwarn><b>${title}</b><br>${body}</div>`;
+}
+
 function renderHome() {
   const st = S.state, ps = st.pipelines;
   const anySync = st.syncing || ps.some((p) => p.syncing) || S.syncingNow.size > 0;
@@ -293,6 +386,7 @@ function renderHome() {
         : p.paused ? `<div class="muted small">paused · last sync ${esc(ago(p.last_sync_ts))}</div>`
         : `<div class="muted small">${esc(ago(p.last_sync_ts))}${p.summary && p.status !== "never" ? " · " + esc(p.summary) : ""}</div>`;
       const when = syncing ? "" : `<div class="muted small schedline" data-next>Next sync: ${esc(nextText(p))}${p.schedule !== "off" && !p.paused ? " · " + esc(intervalText(p.schedule)) : ""}</div>`;
+      const fmw = syncing ? "" : fmWarnLine(p);
       const dst = p.destination || {};
       const tip = p.sources.map((s) => `${s.label}: ${s.path}`).join("\n") + "\n→ " + p.target + "\n→ " + destSummary(dst.type === "github" ? dst : { path: dst.path });
       const blocked = p.status === "blocked" && p.pending_approval;
@@ -309,7 +403,7 @@ function renderHome() {
         <div class="schedrow">${p.sample ? "" : scheduleSelect(p)}</div>
         ${syncing ? "" : changesHtml(p.name, p.last_changes)}
         ${p.sample ? `<div class="sample-acts muted small">Made-up data, nothing from your accounts. <button class="link" data-act="sample-later">Show a later sync</button> · <button class="link" data-act="sample-remove">Remove the sample</button> · <button class="link" data-act="own-source">Connect your own source</button></div>` : ""}
-        ${p.status === "error" ? errLine(p) : ""}
+        ${p.status === "error" ? errLine(p) : ""}${fmw}
       </li>`;
     }).join("")}</ul>${ps.some((p) => p.last_changes) && agentConnected() ? `<p class="muted small ask-hint">Your connected agent can answer this. Ask it: what changed since yesterday</p>` : ""}`;
   }
@@ -408,7 +502,7 @@ function missingSourceHtml(pipeline, label, path, wrapClass) {
   const key = pipeline + "/" + label, m = S.msrc && S.msrc.key === key ? S.msrc : null;
   const attrs = `data-name="${esc(pipeline)}" data-label="${esc(label)}"`;
   const form = m ? `<div class="msrc-form"><label class="tf"><span>New folder for <b>${esc(label)}</b></span>
-      <span class="fr-pathrow"><input type="text" class="mono" id="msrc-path" data-msrc-path ${attrs} value="${esc(m.path)}" spellcheck="false" autocomplete="off" aria-label="New folder path for ${esc(label)}">${brBrowseButton("msrc-path", "source", "the new folder")}</span></label>
+      <span class="fr-pathrow"><input type="text" class="mono" id="msrc-path" data-msrc-path ${attrs} value="${esc(m.path)}" spellcheck="false" autocomplete="off" aria-label="New folder path for ${esc(label)}">${browseButton("msrc-path", "source", "the new folder")}</span></label>
       <button class="btn primary sm" data-act="msrc-save" ${attrs} ${m.busy ? "disabled" : ""}>Use this folder</button>
       <button class="btn ghost sm" data-act="msrc-cancel">Cancel</button>
       ${m.error ? `<div class="derr small" role="alert">${esc(m.error)}</div>` : ""}</div>` : "";
@@ -472,9 +566,22 @@ function renderNotRunning() {
     return `<p class="muted small notrunning" id="bg-not-running" role="alert">Background sync did not start. Open a terminal and run <code>${CLI} background</code>, or try again.
     <button class="btn sm" data-act="bg-set" data-on="true">Try again</button></p>`;
   }
+  if (bg.not_running) return notRunningNotice("home");                      // MD-212: no process and no heartbeat within the grace: say what it means for the files
   if (!S.state.pipelines.some((p) => p.last_sync && p.schedule !== "off" && !p.paused)) return "";
   return `<p class="muted small notrunning" id="bg-not-running">Background sync is on but not running, so nothing syncs by itself right now.
     <button class="btn sm" data-act="bg-set" data-on="true">Start it</button></p>`;
+}
+
+/* MD-212 (AC7, marketing MM-170): consequence first, neutral (a notice, not an error), one action, no jargon. Counted once per outage by the server. */
+function notRunningNotice(surface) {
+  const bg = S.state.background;
+  noteNotRunning(surface);
+  if (!bg.last_update || bg.last_update === "never") {                      // marketing: nothing has synced, so no files can be out of date
+    return `<p class="muted small notrunning" id="bg-not-running" role="status"><b>Background sync isn't running.</b> Nothing has synced yet.
+    <button class="btn sm" data-act="bg-set" data-on="true">Start sync</button></p>`;
+  }
+  return `<p class="muted small notrunning" id="bg-not-running" role="status"><b>Your files may be out of date.</b> Background sync isn't running. Last update: ${esc(bg.last_update || "never")}.
+    <button class="btn sm" data-act="bg-set" data-on="true">Start sync again</button></p>`;
 }
 
 /* MD-162: once the background process runs, Home says when the next scheduled sync is (the earliest of the pipelines that sync by themselves). */
@@ -1011,7 +1118,7 @@ function renderDest() {
   const f = (key, label, hint, value, ph, extra = "", after = "") => `<label class="tf"><span>${label}</span><span class="fr-pathrow"><input type="text" id="d-${key}" data-bind="dest-${key}" value="${esc(value)}" placeholder="${esc(ph || "")}" spellcheck="false" autocomplete="off" ${extra}>${after}</span><small class="muted">${hint}</small></label>`;
   let body;
   if (!gh) {
-    body = f("dir", "Target folder", `The folder your files go to. Inside it, files follow "Where the files go" below. Leave empty to use your output folder (${esc(S.state ? S.state.brain.path : "")}).`, x.dir, "empty = your output folder", saved ? "readonly" : "", saved ? "" : brBrowseButton("d-dir", "output", "a folder to write to"));
+    body = f("dir", "Target folder", `The folder your files go to. Inside it, files follow "Where the files go" below. Leave empty to use your output folder (${esc(S.state ? S.state.brain.path : "")}).`, x.dir, "empty = your output folder", saved ? "readonly" : "", saved ? "" : browseButton("d-dir", "output", "a folder to write to"));
   } else {
     const authRadios = `<div class="radios" role="radiogroup" aria-label="How to authenticate">
         <label><input type="radio" name="da" data-bind="dest-auth" value="sign-in" ${x.auth === "sign-in" ? "checked" : ""} ${saved ? "disabled" : ""}> Sign in with GitHub</label>
@@ -1033,7 +1140,9 @@ function renderDest() {
     ${saved && S.ed.editing ? `<button type="button" class="btn ghost sm" data-act="dest-change">Change target…</button>` : ""}</div>`;
   const changing = S.ed.changing ? `<div class="msg warn" role="status">▲ <span>Moving this pipeline to a different target. The old target keeps its files untouched (nothing there is changed or deleted); the preview shows what the new target needs.
       <button type="button" class="link" data-act="dest-change-cancel">Cancel the change</button></span></div>` : "";
+  const typed = captureTyped(box);                  // MD-216: a result arriving (test, sign-in poll, branch list) must not take what is being typed
   box.innerHTML = `${changing}${kind}<div class="tform">${body}${testBtn}${result}${pass}</div>`;
+  restoreTyped(box, typed);
 }
 
 async function openEditor(name, returnTo) {
@@ -1246,7 +1355,7 @@ function renderSourceRows() {
       <input type="text" id="f-src${i}" data-bind="src-path" data-i="${i}" aria-label="Folder ${i + 1} path" value="${esc(s.path)}" placeholder="~/projects/my-project/docs" spellcheck="false" autocomplete="off">
       <input type="text" id="l-src${i}" data-bind="src-label" data-i="${i}" aria-label="Folder ${i + 1} label" value="${esc(s.label)}" placeholder="label" spellcheck="false" autocomplete="off">
       <button type="button" class="btn ghost rm" data-act="remove-source" data-i="${i}" aria-label="Remove folder ${i + 1}" title="Remove folder">✕</button>
-      <div class="m swrow">${srcSwitch(s, i)}${brBrowseButton("f-src" + i, "source", "folder " + (i + 1))}</div>
+      <div class="m swrow">${srcSwitch(s, i)}${browseButton("f-src" + i, "source", "folder " + (i + 1))}</div>
       <div class="m" id="m-src${i}"></div></div>`).join("");
 }
 
@@ -1573,6 +1682,11 @@ function noteLinger(surface) {
   if (!lingerSeen.has(surface)) { lingerSeen.add(surface); track("notice_shown", { kind: "linger", surface }); }
   return "";
 }
+const notRunningSeen = new Set();
+function noteNotRunning(surface) {
+  if (!notRunningSeen.has(surface)) { notRunningSeen.add(surface); track("notice_shown", { kind: "background_not_running", surface }); }
+  return "";
+}
 const bucketOf = (n) => (n <= 0 ? "0" : n <= 10 ? "1-10" : n <= 100 ? "11-100" : n <= 1000 ? "101-1000" : "1000+");
 const ERROR_CLASS = { auth: "auth", "vault-locked": "auth", "vault-unsafe": "auth", "rate-limited": "rate_limit", network: "network", "protected-branch": "target_write",
   "head-moved": "target_write", "concurrent-change": "target_write", "credential-conflict": "validation" };
@@ -1645,10 +1759,12 @@ function renderBackgroundSettings() {
   const btn = (on, label) => `<button data-act="bg-set" data-on="${on}" aria-pressed="${bg.enabled === on}">${label}</button>`;
   return `<section class="card usage" id="bg-settings" aria-labelledby="bg-set-h">
     <h2 id="bg-set-h">Background sync</h2>
-    <p>Keep syncing when this window is closed (starts when you log in to your desktop). How often each pipeline syncs is set on Home.</p>
+    <p>Keep syncing when this window is closed ${S.state && S.state.os === "windows" ? "(starts when you sign in to Windows)" : "(starts when you log in to your desktop)"}. How often each pipeline syncs is set on Home.</p>
     <div class="seg" role="group" aria-label="Background sync">${btn(true, "On")}${btn(false, "Off")}</div>
-    <p class="usage-status" role="status">${bg.enabled ? (bg.running ? (bg.outdated ? `<span id="bg-outdated">${esc(`On, but still running ${bg.version && bg.version !== "unknown" ? `the older version ${bg.version}` : "an older version"} (installed: ${bg.installed_version}). To restart it, open a terminal and run: ${CLI} schedule background restart`)}</span>` : "On, and running now.") : "On, but not running right now. Opening the app or running any mdpipeline command starts it again.") : "Off. Nothing syncs by itself. Use Sync now, or turn this on."}</p>
+    ${bg.enabled && bg.not_running && !bg.running ? notRunningNotice("settings") : ""}
+    <p class="usage-status" role="status">${bg.enabled ? (bg.running ? (bg.restarting ? `<span id="bg-restarting">${esc(`On, and restarting on version ${bg.installed_version}. A sync in progress finishes first.`)}</span>` : bg.outdated ? `<span id="bg-outdated">${esc(`On, but still running ${bg.version && bg.version !== "unknown" ? `the older version ${bg.version}` : "an older version"} (installed: ${bg.installed_version}). To restart it, open a terminal and run: ${CLI} schedule background restart`)}</span>` : "On, and running now.") : "On, but not running right now. Opening the app or running any mdpipeline command starts it again.") : "Off. Nothing syncs by itself. Use Sync now, or turn this on."}</p>
     ${bg.enabled && bg.linger_hint && bg.linger_text ? `${noteLinger("settings")}<p class="small" id="bg-linger">${lingerHtml(bg.linger_text)}</p>` : ""}
+    ${bg.enabled && bg.no_login_start && bg.no_login_start_text ? `<p class="small" id="bg-no-login-start">${esc(bg.no_login_start_text)}</p>` : ""}
     <p class="small muted">In a terminal: <code>${CLI} schedule background off</code></p></section>`;
 }
 
@@ -1923,5 +2039,36 @@ document.addEventListener("change", (ev) => {
 /* ---------------------------------------------------------------- boot */
 window.addEventListener("popstate", routeFromHash);
 // Start only when every script has run: firstrun.js, agents.js ... load after this file, and an early server answer would call their functions before they exist.
-function boot() { refresh().then(() => { if (/^#\/pipeline\//.test(location.hash)) routeFromHash(); setInterval(poll, POLL_MS); }); }
+/* MD-217: a script that did not load (a busy machine, a local server that did not answer in time) must never leave a broken screen. browse.js only adds the Browse
+   buttons, so without it they are simply absent. The other four scripts are core: if one is missing the page says so calmly and offers the one fix. */
+const browseButton = (...args) => (typeof brBrowseButton === "function" ? brBrowseButton(...args) : "");
+function missingCoreScripts() {
+  return [["firstrun.js", typeof renderFirstRun], ["agents.js", typeof agPanel], ["remove.js", typeof rmCardHtml], ["feedback.js", typeof fbPrompt]]
+    .filter(([, type]) => type !== "function").map(([name]) => name);
+}
+function showReloadLine() {
+  $("main").innerHTML = `<section class="card" id="script-missing" role="status"><p>Part of this page didn't load. Reload the page to fix it.</p>
+    <p><button class="btn primary" id="script-reload">Reload the page</button></p></section>`;
+  $("script-reload").addEventListener("click", () => location.reload());
+}
+
+/* MD-217 (DS-P-1106-4): count the page that lost a script, once per page load, with a FIXED name (no file names, paths or URLs), so the 11-15 read can say whether this
+   happens to outside users. It needs app.js itself (track, api): if the script that holds track() is the one that is missing, no event can fire. */
+let scriptMissingCounted = false;
+async function countMissingScript(script) {
+  if (scriptMissingCounted) return;
+  scriptMissingCounted = true;
+  if (!S.state) { const st = await api("GET", "/api/state"); if (!st.ok) return; S.state = st.data; }      // the consent to share lives in the state
+  track("error_shown", { ui_area: "page", error_class: "script_missing", script });
+}
+
+function boot() {
+  const core = missingCoreScripts();
+  if (core.length) { showReloadLine(); countMissingScript(core[0] === "firstrun.js" ? "firstrun" : "other"); return; }
+  refresh().then(() => {
+    if (typeof brBrowseButton !== "function") countMissingScript("browse");
+    if (/^#\/pipeline\//.test(location.hash)) routeFromHash();
+    setInterval(poll, POLL_MS);
+  });
+}
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();

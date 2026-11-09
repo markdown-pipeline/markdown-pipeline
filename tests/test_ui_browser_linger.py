@@ -43,7 +43,7 @@ def test_home_shows_the_line_with_both_commands_and_hide_removes_it_for_good(pag
         line.get_by_role("button", name="Hide").click()
         expect(page.locator("#bg-linger-home")).to_have_count(0)
         page.reload()
-        expect(page.locator("main")).to_contain_text("Background sync is on")
+        expect(page.locator("main")).to_contain_text("Background sync isn't running")          # MD-212: the not-running line is now the consequence-first notice
         expect(page.locator("#bg-linger-home")).to_have_count(0)
 
 

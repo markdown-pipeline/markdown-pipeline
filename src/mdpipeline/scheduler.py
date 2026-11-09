@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import sys
 import time
 from pathlib import Path
 
@@ -76,6 +77,22 @@ def refresh_login_item() -> bool:
     if not background_enabled():
         return False
     return autostart.refresh_if_outdated()
+
+
+def ensure_login_item(via: str = "cli") -> bool:
+    """MD-212: background sync is on and was announced, but its login item is gone (deleted by hand, a cleanup tool, a desktop change): put it
+    back, so it starts again at the next login. Never while it is off or not yet announced. Counts the repair (``background_self_healed``)."""
+    from .schedulestore import SchedulerStore
+
+    state = SchedulerStore().read()["background"]
+    if not state.get("enabled", True) or not state.get("announced"):
+        return False
+    if not autostart.ensure_item():
+        return False
+    from . import usage_hooks
+
+    usage_hooks.background_self_healed("login_item", via)
+    return True
 
 
 def set_background(enabled: bool) -> None:
@@ -169,6 +186,12 @@ def _enable_user_service() -> None:
 
 ANNOUNCEMENT = ("Your files now stay current by themselves: a small background process syncs every hour. It keeps running when this "
                 "window is closed and starts at login. You can change how often or turn it off any time.")
+WINDOWS_ANNOUNCEMENT = ANNOUNCEMENT.replace("starts at login", "starts when you sign in to Windows")          # MD-181 AC5, marketing MM-135 (comment 10799)
+
+
+def announcement() -> str:
+    """The plain-words announcement for this OS: Windows says "sign in to Windows", everything else is unchanged."""
+    return WINDOWS_ANNOUNCEMENT if sys.platform == "win32" else ANNOUNCEMENT
 
 
 def ensure_background(*, acknowledge: bool = False) -> str | None:
@@ -191,7 +214,7 @@ def ensure_background(*, acknowledge: bool = False) -> str | None:
     with store.update() as data:
         data["background"]["announced"] = True
         data["background"]["acknowledged"] = bool(acknowledge)
-    return ANNOUNCEMENT
+    return announcement()
 
 
 def acknowledge_announcement() -> None:

@@ -139,6 +139,26 @@ def target_flags(sp, adding: bool) -> None:
         g.add_argument("--remove-clone", action="store_true", help="stop using a local clone")
 
 
+def _signin_words() -> str:
+    """MD-181 AC5 (marketing, MM-135 comment 10799): on Windows the person "signs in to Windows"; elsewhere they "log in"."""
+    return "sign in to Windows" if sys.platform == "win32" else "log in"
+
+
+def schedule_description() -> str:
+    return ("Pipelines sync by themselves after their first sync: every hour by default, while the computer is on. "
+            f"A small background process keeps running when the window is closed and starts again when you {_signin_words()}.")
+
+
+def background_on_text() -> str:
+    return f"Background sync is on: it keeps running when this window is closed and starts again when you {_signin_words()}."
+
+
+def background_off_text() -> str:
+    if sys.platform == "win32":
+        return "Background sync is off and it no longer starts when you sign in to Windows."
+    return "Background sync is off and its login item is removed."
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = SafeParser(
         prog="mdpipeline",
@@ -313,6 +333,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     note = sub.add_parser("install-note")                    # the install script's one-word marker (MD-117); not listed in --help
     note.add_argument("method")
+    note.add_argument("--release-version")                   # MD-205: set only when the script downloaded one of our release wheels
+    note.add_argument("--asset-name")
     sub._choices_actions = [a for a in sub._choices_actions if a.dest != "install-note"]
 
     cx = sub.add_parser("connect", help="print the MCP config snippet for Claude Code and Codex",
@@ -369,8 +391,7 @@ def build_parser() -> argparse.ArgumentParser:
     usctr.add_argument("state", choices=["on", "off"])
 
     sc = sub.add_parser("schedule", help="how often each pipeline syncs by itself, and the background process that does it",
-                        description="Pipelines sync by themselves after their first sync: every hour by default, while the computer is on. "
-                                    "A small background process keeps running when the window is closed and starts again when you log in.")
+                        description=schedule_description())
     scsub = sc.add_subparsers(dest="schedule_action", metavar="ACTION")
     scsub.add_parser("show", help="each pipeline's interval, last sync and next sync (the default)")
     scset = scsub.add_parser("set", help="change how often one pipeline syncs by itself")
@@ -1236,8 +1257,29 @@ def count_line(counts: dict) -> str:
     return ", ".join(f"{k} {counts[k]}" for k in keys if k != "renamed" or counts.get(k))
 
 
+def front_matter_warning_lines(path: str, kind: str, line: int | None, had_copy: bool = False) -> list[str]:
+    """MD-201 AC4/AC5: the warning for one skipped file. Words reviewed by marketing in MM-166 (Jira comment 11357).
+
+    The parser can point one line after the real mistake, so the text says "near line N", never "at line N"."""
+    block = "The front matter (the block between the --- lines at the top)"
+    if kind == "no-closing":
+        what, fix = f"{block} has no closing --- line.", "Add the closing --- line, or exclude the file."
+    elif kind == "not-mapping":          # valid YAML, just not `key: value` lines: say that, and never "invalid" or a made-up line
+        what, fix = f"{block} is not made of key: value lines.", "Rewrite it as key: value lines, or exclude the file."
+    elif line:
+        what, fix = f"{block} is not valid YAML, near line {line}.", f"Check near line {line} (the mistake can be on the line before), or exclude the file."
+    else:
+        what, fix = f"{block} is not valid YAML.", "Check the front matter, or exclude the file."
+    out = [f"    warning       {path}", f"                  {what}",
+           "                  This file was skipped and not changed. Your other files synced.", f"                  {fix}"]
+    if had_copy:
+        out.append("                  The copy in your output folder is from before your last edit.")
+    return out
+
+
 def format_result(res: SyncResult) -> str:
-    head = f"{res.pipeline}: {res.result}" + (" (dry run)" if res.dry_run else "")
+    fm = res.plan.front_matter_warnings if res.plan else []
+    head = f"{res.pipeline}: {res.result}" + (f", {len(fm)} warning{'s' if len(fm) != 1 else ''}" if fm else "") + (" (dry run)" if res.dry_run else "")
     lines = [head]
     if res.message:
         lines.append(f"  {res.message}")
@@ -1253,6 +1295,9 @@ def format_result(res: SyncResult) -> str:
                 note = f"  ({item.reason})" if item.reason and not item.from_target else ""
                 if item.from_target:
                     note = f"  (renamed from {item.from_target})"
+                if item.warning:
+                    lines.extend(front_matter_warning_lines(item.source_path, item.warning, item.warning_line, item.had_copy))
+                    continue
                 kind = f"conflict ({item.conflict_type})" if item.action == "conflict" else ("error" if item.error else item.action)
                 lines.append(f"    {kind:<13} {where}  <- {item.display or item.source_path}{note}")
             lines.append(f"    {count_line(group.counts())}")
@@ -1332,6 +1377,16 @@ def cmd_update(args) -> int:
     if args.dry_run:
         print(f"Would run: {shown}")
         return EXIT_OK
+    if sys.platform == "win32" and method not in ("uvx", "registry"):      # MD-183: never replace the program from inside itself (its files are locked)
+        from . import winupdate
+
+        try:
+            log = winupdate.start(command)
+        except OSError as exc:
+            err(f"Error: the update could not be started ({exc}), so the app was not updated. Nothing was changed.")
+            return EXIT_RUNTIME
+        print(winupdate.STARTED_TEXT.format(log=log))
+        return EXIT_OK
     print(f"Running: {shown}")
     try:
         code = lifecycle.run_command(command)
@@ -1355,7 +1410,7 @@ def cmd_uninstall(args) -> int:
     from .vault import data_dir
 
     scheduler.turn_off_background()           # MD-204: this also stops the running process
-    print("Background sync is off and its login item is removed.")
+    print(background_off_text())
     print(f"To remove the program, run:  {lifecycle.uninstall_command(install_info.install_method())}")
     print("Your synced Markdown files, your output folders and their configuration are untouched.")
     print(f"The app's own data (vault, settings) is in {data_dir()}: delete that folder too if you want everything gone.")
@@ -1451,6 +1506,7 @@ def cmd_status(args) -> int:
         print(json.dumps(data, indent=2, default=str))
         return EXIT_OK
     import_hint(brain)
+    _print_not_running(brain, time.time(), "cli")
     if not data["pipelines"]:
         print("No pipelines.")
     for s in data["pipelines"]:
@@ -1578,6 +1634,10 @@ def cmd_schedule(args) -> int:
             from . import background
             from . import __version__
 
+            if background.found_down_at_start or background.not_running():
+                from . import usage_hooks
+
+                usage_hooks.background_not_running_acted("cli")             # MD-212 (AC9): the funnel shown -> acted -> cleared
             result = background.restart()
             print({"restarting": f"Background sync is restarting on version {__version__}. A sync in progress finishes first.",
                    "restarting-unsafe": f"Background sync is restarting on version {__version__}. If a sync was running, it starts again on the next run.",
@@ -1590,7 +1650,7 @@ def cmd_schedule(args) -> int:
             print("Background sync is off: nothing syncs by itself and the login item is removed. Turn it on again: mdpipeline schedule background on")
         else:
             scheduler.turn_on_background()
-            print("Background sync is on: it keeps running when this window is closed and starts again when you log in.")
+            print(background_on_text())
             _print_linger_line()
         return EXIT_OK
     now = time.time()
@@ -1603,7 +1663,9 @@ def cmd_schedule(args) -> int:
         state = "off"
     elif background.is_running():
         state = f"on (version {background.running_version()}; intervals: {', '.join(SCHEDULE_VALUES)})"
-        if background.is_outdated():          # MD-204: one clear next step
+        if background.restart_pending():       # MD-218: the restart is already under way: say so, ask for nothing
+            state = f"on, restarting on version {__version__}. A sync in progress finishes first."
+        elif background.is_outdated():          # MD-204: one clear next step
             known = background.running_version()
             what = "an older version" if known == background.UNKNOWN_VERSION else f"the older version {known}"
             state = f"on, but it is still running {what} (installed: {__version__}). Restart it: mdpipeline schedule background restart"
@@ -1611,7 +1673,8 @@ def cmd_schedule(args) -> int:
         state = "on" if background.wait_until_running() else "on (starting now)"
     else:
         state = "on but not running (start it with: mdpipeline background)"
-    print(f"Background sync: {state}" + ("" if state.startswith(("on (version", "on, but")) else f" (intervals: {', '.join(SCHEDULE_VALUES)})"))
+    _print_not_running(brain, now, "cli")
+    print(f"Background sync: {state}" + ("" if state.startswith(("on (version", "on, but", "on, restarting")) else f" (intervals: {', '.join(SCHEDULE_VALUES)})"))
     if state != "off":
         _print_linger_line()
     for p in data["pipelines"]:
@@ -1622,9 +1685,24 @@ def cmd_schedule(args) -> int:
     return EXIT_OK
 
 
+def _print_not_running(brain, now: float, surface: str) -> None:
+    """MD-212 (AC7): when background sync is on but nothing runs, say so first, in plain words, with the one next step. Counted once per outage."""
+    from . import background, usage_hooks
+
+    if background.not_running(now):
+        from .status import background_down_cli_text, newest_success_ts
+
+        print(background_down_cli_text(newest_success_ts(brain), now))
+        usage_hooks.background_not_running_shown(surface)
+
+
 def _print_linger_line() -> None:
-    """MD-166: where the person is at that moment (the CLI), say what happens without linger. Never runs it."""
+    """MD-166: where the person is at that moment (the CLI), say what happens without linger. Never runs it. MD-212: and, on a Linux box with no
+    systemd and no desktop session, that nothing starts it at login."""
     from . import autostart
+
+    if autostart.cannot_start_at_login():
+        print(autostart.NO_LOGIN_START_LINE)
 
     if autostart.linger_notice():
         print(autostart.LINGER_LINE_PLAIN)
@@ -1637,6 +1715,11 @@ def cmd_background(args) -> int:
     from . import background
 
     wait = {"wait_for_lock": args.wait_for_lock} if getattr(args, "wait_for_lock", 0) else {}       # MD-204: only a restart's new process waits
+    if getattr(args, "started_by", "manual") == "manual":
+        from . import autostart
+
+        if autostart.cannot_start_at_login():           # MD-212 (AC3): a person running it by hand here learns it will not come back by itself
+            print(autostart.NO_LOGIN_START_LINE)
     if not background.run(how=getattr(args, "started_by", "manual"), **wait):
         print("The background process is already running.")
     return EXIT_OK
@@ -1714,10 +1797,12 @@ def self_heal_background(command: str, action: str | None = None) -> None:
     try:
         from . import background
 
+        background.found_down_at_start = background.not_running()        # MD-212: before the self-heal below, so a restart typed on the notice still counts
+        via = {"mcp": "mcp", "ui": "app"}.get(command, "cli")           # MD-212: which door found background sync dead
         if command == "update" or (command == "schedule" and action == "background"):
-            background.ensure_running(restart_outdated=False)         # MD-204: those two restart it themselves
+            background.ensure_running(restart_outdated=False, via=via)         # MD-204: those two restart it themselves
         else:
-            background.ensure_running()
+            background.ensure_running(via=via)
     except Exception:                   # noqa: BLE001
         return
 
@@ -1760,6 +1845,8 @@ def _main(args) -> int:
             from .install_info import record_install_method
 
             usage.internal_flag()            # MD-154: an install made with MDPIPELINE_INTERNAL=1 is marked now, before anyone has chosen anything
+            if args.release_version and args.asset_name:
+                usage.UsageStore().remember_download(args.release_version, args.asset_name)      # never fails the install; nothing is sent here
             return EXIT_OK if record_install_method(args.method) else EXIT_USAGE
         if args.command == "update":
             return cmd_update(args)

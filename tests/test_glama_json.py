@@ -11,7 +11,19 @@ PATH = APP / "glama.json"
 
 
 def test_glama_json_has_the_schema_and_the_maintainer():
-    assert json.loads(PATH.read_text(encoding="utf-8")) == {"$schema": "https://glama.ai/mcp/schemas/server.json", "maintainers": ["avikoren"]}
+    data = json.loads(PATH.read_text(encoding="utf-8"))
+    assert data["$schema"] == "https://glama.ai/mcp/schemas/server.json" and data["maintainers"] == ["avikoren"]
+
+
+def test_glama_json_pins_the_build_that_worked_in_the_glama_admin_tab():
+    """MD-210: Glama ignores the Dockerfile; it reuses the build spec the owner proved (2026-11-05: success, 6 tools). No credentials; the env schema stays in the Admin tab."""
+    data = json.loads(PATH.read_text(encoding="utf-8"))
+    assert data["baseImage"] == "debian:trixie-slim"
+    assert data["buildSteps"] == ["apt-get update && apt-get install -y --no-install-recommends python3 python3-venv",
+                                  "python3 -m venv /opt/mdp",
+                                  "/opt/mdp/bin/pip install mdpipeline==0.1.18"]
+    assert data["cmdArguments"] == ["mcp-proxy", "--", "/opt/mdp/bin/mdpipeline", "--install-method", "registry", "mcp"]
+    assert "placeholderArguments" not in data          # an env schema stays in the Admin tab: only keys seen to work are pinned
 
 
 def test_glama_json_is_a_tracked_file_not_an_ignored_one():

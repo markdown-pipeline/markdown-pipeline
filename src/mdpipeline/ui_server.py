@@ -173,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
             from .scheduler import acknowledge_announcement
 
             acknowledge_announcement()
-            return uiapi.background_view()
+            return uiapi.background_view(brain)
         if method == "POST" and path == "/api/background/linger-hide":
             from .scheduler import hide_linger_notice
 
@@ -181,10 +181,10 @@ class Handler(BaseHTTPRequestHandler):
             from . import usage_hooks
 
             usage_hooks.linger_notice_hidden("home")
-            return uiapi.background_view()
+            return uiapi.background_view(brain)
         if method == "POST" and path == "/api/background":
             try:
-                return uiapi.set_background_view(self._body().get("enabled"))
+                return uiapi.set_background_view(self._body().get("enabled"), brain)
             except ValueError as exc:
                 raise ApiError(400, str(exc)) from exc
         m = re.fullmatch(r"/api/pipelines/([^/]+)/schedule", path)

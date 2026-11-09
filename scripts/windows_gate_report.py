@@ -21,6 +21,8 @@ STEPS: list[tuple[str, str, tuple[str, ...]]] = [
       "files_intact_after_stop")),
     ("Step 6", "after a reboot: the login item starts the process, the next sync and status are ok",
      ("reboot_login_item_starts_process", "reboot_login_item_still_there", "reboot_next_sync_ok", "reboot_status_ok")),
+    ("Step 7", "update while the app and its background process are running (MD-183): the installer runs from the helper, the install still works, background sync is back",
+     ("update_helper_installs_while_running", "update_leaves_a_working_install", "update_restarts_background_sync")),
 ]
 
 NOT_COVERED = [
@@ -28,7 +30,7 @@ NOT_COVERED = [
     "Step 2: the notice Windows itself shows when a startup app is added",
     "Step 3: that no console window flashes or takes focus at sign-in (a screenshot cannot catch a flash)",
     "Step 5: that 'Open' on a file and on a folder opens the normal Windows app",
-    "MD-183 (W5): `install.ps1` followed by `update` and uninstall (blocked by the `update` 'Access is denied' bug; not in the run yet)",
+    "MD-183 (W5): the public `install.ps1` itself (withheld until the Windows release) and uninstall. Step 7 runs the same update helper with a local wheel as the installer command",
 ]
 
 

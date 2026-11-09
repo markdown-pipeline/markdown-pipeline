@@ -181,6 +181,32 @@ class UsageStore:
             data["consent"] = choice
             if choice != "share":
                 data["queue"] = []          # effective immediately: whatever waited to be sent is dropped
+                data.pop("pending_download", None)      # MD-205: a download waiting for consent is dropped with it
+
+    # -- a release download the install script told us about (MD-205) ---------------------------------------------
+    @property
+    def pending_download(self) -> dict | None:
+        value = self._read().get("pending_download")
+        return value if isinstance(value, dict) else None
+
+    def remember_download(self, release_version: str, asset_name: str) -> bool:
+        """Remember that the install script just downloaded this release asset. Only values that pass the allowlist are kept; returns whether it was kept."""
+        from .usage_events import DOWNLOAD_PROPS
+
+        if DOWNLOAD_PROPS["release_version"].check(release_version) is None or DOWNLOAD_PROPS["asset_name"].check(asset_name) is None:
+            return False
+        with self._update() as data:
+            data["pending_download"] = {"release_version": release_version, "asset_name": asset_name}
+        return True
+
+    def take_download(self, current_version: str) -> dict:
+        """The three download properties for the event about to be sent, and forget the record. A record of another version is stale (the app was
+        updated some other way since): it is dropped and nothing is claimed."""
+        with self._update() as data:
+            record = data.pop("pending_download", None)
+        if not isinstance(record, dict) or record.get("release_version") != current_version:
+            return {}
+        return {**record, "download_source": "github_release"}
 
     # -- events --------------------------------------------------------------------------------------------------
     @property
@@ -480,7 +506,7 @@ def report_install_once() -> bool:
             return False
         from .install_info import install_method, os_name
 
-        if not emit("install_completed", os=os_name(), install_method=install_method()):
+        if not emit("install_completed", os=os_name(), install_method=install_method(), **store.take_download(__version__)):
             return False
         with store._update() as data:
             data["install_reported"] = True

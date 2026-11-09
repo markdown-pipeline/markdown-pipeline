@@ -1,6 +1,6 @@
 [project]
 name = "mdpipeline"
-version = "0.1.16"
+version = "0.1.19"
 description = "Local Markdown pipeline: project folders to a brain raw/ layer, with CLI, MCP and UI"
 readme = "docs/pypi-readme.md"
 license = "Apache-2.0"
@@ -31,4 +31,5 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --color=no"
-markers = ["windows_unsupported(reason): cannot run on Windows; skipped there with the reason and listed in the run summary"]
+markers = ["windows_unsupported(reason): cannot run on Windows; skipped there with the reason and listed in the run summary",
+           "real_login_start: uses the real autostart.cannot_start_at_login (MD-212); every other test has it pinned to False so the host's systemd and desktop never matter"]

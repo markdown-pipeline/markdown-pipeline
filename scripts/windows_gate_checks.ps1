@@ -119,6 +119,25 @@ p.write_text(chr(10).join(out)+chr(10),encoding='utf-8')"
     }
     Record 'files_intact_after_stop' ($bad -eq 0) 0 "files missing or shorter than their source: $bad of $Big"
 
+    # H: `mdpipeline update` while the app and its background process run (MD-183). Windows locks a running program's files, so update hands the work to a
+    #    helper that waits for them to let go. The REAL helper is started exactly as `update` starts it (winupdate.start), with a local wheel as the installer
+    #    command (the public install.ps1 is withheld until the Windows release). Expected: the log says "Updated.", the tool still imports, background sync is back.
+    (Mdp schedule background on) | Out-Null
+    [void](WaitFor { (BgRunning) } 60)
+    $UpdateLog = "$env:LOCALAPPDATA\mdpipeline\update.log"
+    Remove-Item $UpdateLog -ErrorAction SilentlyContinue
+    $wheel = (Get-ChildItem C:\Users\tester\mdpipeline-*.whl | Select-Object -First 1).FullName
+    $pyCode = "from mdpipeline import winupdate; print(winupdate.start(['uv','tool','install','--force','--reinstall','--python','3.12',r'$wheel']))"
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $started = (& $Py -c $pyCode 2>&1) -join ' '
+    $finished = WaitFor { (Test-Path $UpdateLog) -and ((Get-Content $UpdateLog -Raw) -match 'Updated\.|Not updated|The update failed') } 420
+    $logText = if (Test-Path $UpdateLog) { (Get-Content $UpdateLog -Raw).Trim() -replace '\s+', ' ' } else { "no log: $started" }
+    Record 'update_helper_installs_while_running' (($null -ne $finished) -and ($logText -match 'Updated\.')) $t.Elapsed.TotalSeconds $logText
+    $v = (& $Py -I -c "import mdpipeline; print(mdpipeline.__version__)" 2>&1) -join ' '
+    Record 'update_leaves_a_working_install' ($LASTEXITCODE -eq 0 -and $v -match '^\d+\.\d+\.\d+') 0 "version after the update: $v"
+    $back = WaitFor { (BgRunning) } 180
+    Record 'update_restarts_background_sync' ($null -ne $back) 0 $(if ($null -ne $back) { "running $([math]::Round($back,1)) s after the update finished" } else { 'no background process 180 s after the update' })
+
     # E: leave background ON for the reboot check (step 6)
     (Mdp schedule background on) | Out-Null
 }

@@ -26,6 +26,7 @@ ALLOWED_WRITERS = {
     "install_info.py": "the install script's one-word marker (how the app was installed) in the app data directory, never inside a brain (MD-117)",
     "autostart.py": "the login item that starts the background sync: one file in the person's own startup folder, removable any time (MD-121)",
     "background.py": "the background process's single-instance lock file in the app data directory (MD-121)",
+    "winupdate.py": "Windows `update` (MD-183): writes its own helper script and log (update-helper.ps1, update.log) in the app data directory, never inside a brain; it touches no brain content",
     "schedulestore.py": "scheduled-sync settings and runtime bookkeeping: one JSON file in the app data directory, never inside a brain (MD-121)",
     "firstrun.py": "guided first run: where the person stopped (no token) in the app data directory (MD-118); the destination folder is created only on 'Write N files'",
     "agents.py": "connect your agent (MD-120): the instructions file (AGENTS.md) in the folder the files went to, only on the person's click, never overwritten without asking; which agents it connected, in the app data directory",

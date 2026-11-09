@@ -513,3 +513,4 @@ main h1[tabindex="-1"]:focus{outline:none}
 #fr-dest{font-family:var(--mono);font-size:13px}
 .fr-cardact .btn{font-weight:600}
 .fr-write{overflow-wrap:anywhere}
+.fmwarn{grid-column:1/-1;margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--warn-bg);color:var(--warn);font-size:13px;line-height:1.45}

@@ -99,7 +99,7 @@ def test_the_only_folder_missing_is_a_source_missing_card_with_its_kept_files(br
 
 
 def test_file_level_errors_are_listed_on_the_error_card(brain, add_pipeline, make_source):
-    src = make_source("a", {"ok.md": "ok", "bad.md": "---\nkey: [oops\n---\nx"})
+    src = make_source("a", {"ok.md": "ok", "bad.md": "---\nprovenance: mine\n---\nx"})      # MD-201: bad YAML is a warning now; the author's own provenance key is still an error
     add_pipeline(Pipeline.new("p", [str(src)]))
     sync_pipeline(brain, "p")
     with running_ui(brain) as ui:

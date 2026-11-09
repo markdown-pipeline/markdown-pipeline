@@ -37,13 +37,15 @@ def test_l1_ui_renders_the_commands_in_code_style():
     assert "esc(bg.linger_text)" not in APP_JS and "esc(S.state.background.linger_text)" not in FIRSTRUN_JS
 
 
-def test_l2_schedule_background_on_line():
-    assert f'print("{L2}")' in CLI_SRC
+def test_l2_schedule_background_on_line(monkeypatch):
+    monkeypatch.setattr("sys.platform", "linux")          # MD-181: Windows says "sign in to Windows" (tests/test_md181_windows_words.py)
+    assert cli.background_on_text() == L2 and "print(background_on_text())" in CLI_SRC
 
 
-def test_l2b_schedule_help_matches_l2():
+def test_l2b_schedule_help_matches_l2(monkeypatch):
+    monkeypatch.setattr("sys.platform", "linux")
     assert ("A small background process starts at login") not in CLI_SRC
-    assert ("A small background process keeps running when the window is closed and starts again when you log in.") in CLI_SRC
+    assert ("A small background process keeps running when the window is closed and starts again when you log in.") in cli.schedule_description()
 
 
 def test_l3_readme_step_5():

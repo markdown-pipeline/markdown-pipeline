@@ -20,7 +20,8 @@ def row(check: str, status: str = "PASS", phase: str = "before", detail: str = "
 
 ALL_CHECKS = [row(c) for c in (
     "install", "first_sync", "background_on_starts_process", "background_on_writes_login_item", "sync_was_running_when_stop_asked",
-    "stop_ends_the_process", "stop_removes_login_item", "stop_lets_the_sync_finish", "next_sync_is_clean", "files_intact_after_stop")] + [
+    "stop_ends_the_process", "stop_removes_login_item", "stop_lets_the_sync_finish", "next_sync_is_clean", "files_intact_after_stop",
+    "update_helper_installs_while_running", "update_leaves_a_working_install", "update_restarts_background_sync")] + [
     row(c, phase="after") for c in ("reboot_login_item_starts_process", "reboot_login_item_still_there", "reboot_next_sync_ok", "reboot_status_ok")]
 
 META = dict(stamp="20261102-100000", wheel="mdpipeline-0.1.16-py3-none-any.whl", wheel_sha="ab" * 32, commit="abc1234",
@@ -45,7 +46,7 @@ def test_the_report_names_the_windows_build():
 
 def test_there_is_one_pass_line_per_checklist_step():
     text, _ = build()
-    for step in ("Step 1", "Step 3", "Step 4", "Step 6"):
+    for step in ("Step 1", "Step 3", "Step 4", "Step 6", "Step 7"):
         assert [l for l in text.splitlines() if l.startswith(f"- PASS {step}")], step
 
 
@@ -96,3 +97,20 @@ def test_the_report_asks_the_owner_for_no_step_inside_the_run():
 
 def test_the_version_comes_from_the_wheel_file_name():
     assert report.wheel_version("mdpipeline-0.1.16-py3-none-any.whl") == "0.1.16"
+
+
+# --- MD-183: `update` while the app is running (Step 7) ----------------------------------------------------------------------
+def test_a_failed_update_check_fails_step_7_and_the_result():
+    rows = [r if r["check"] != "update_leaves_a_working_install" else row("update_leaves_a_working_install", "FAIL", detail="No module named mdpipeline") for r in ALL_CHECKS]
+    text, ok = build(rows)
+    assert not ok and [l for l in text.splitlines() if l.startswith("- FAIL Step 7")] and "No module named mdpipeline" in text
+
+
+def test_a_missing_update_row_is_a_failure_not_a_silent_pass():
+    text, ok = build([r for r in ALL_CHECKS if not r["check"].startswith("update_")])
+    assert not ok and [l for l in text.splitlines() if l.startswith("- FAIL Step 7")]
+
+
+def test_the_report_says_what_the_update_check_does_not_run():
+    text, _ = build()
+    assert "public `install.ps1`" in text

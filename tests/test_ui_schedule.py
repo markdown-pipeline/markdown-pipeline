@@ -80,7 +80,8 @@ def test_the_state_describes_the_background_process(one):
     import mdpipeline
 
     assert bg == {"enabled": True, "announced": False, "running": False, "announce_pending": False, "linger_hint": False, "linger_notice": False,
-                  "version": None, "installed_version": mdpipeline.__version__, "outdated": False}       # MD-204: which version runs, and whether it is older
+                  "version": None, "installed_version": mdpipeline.__version__, "outdated": False, "restarting": False,
+                  "not_running": False, "no_login_start": False}       # MD-212: not announced yet = not "not running"; MD-204: which version runs, and whether it is older
 
 
 def test_the_first_ui_sync_turns_the_background_on_and_returns_the_plain_words_once(one):

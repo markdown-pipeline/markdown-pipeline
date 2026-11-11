@@ -9,7 +9,7 @@ import os
 import re
 from urllib.parse import urlsplit
 
-from . import sample
+from . import sample, winpaths
 
 DEFAULT_JQL = "updated >= -90d ORDER BY updated DESC"
 DEFAULT_ROOT = "~/markdown-pipeline"
@@ -22,7 +22,15 @@ def _slug(text: str) -> str:
 
 def default_folder(label: str) -> str:
     """Where the files go unless the person changes it: no spaces, easy to type in a terminal."""
-    return f"{DEFAULT_ROOT}/{_slug(label) or 'source'}"
+    name = _slug(label) or "source"
+    if winpaths.is_windows():            # MD-223: a full Windows path, never "~/..." (the person sees and types it in Explorer, cmd and PowerShell)
+        return winpaths.home() + "\\markdown-pipeline\\" + name
+    return f"{DEFAULT_ROOT}/{name}"
+
+
+def _expand(path: str) -> str:
+    """A typed or suggested folder as the one string it is saved and compared as: Windows rules on Windows, ``~`` expanded elsewhere."""
+    return winpaths.canonical(path) if winpaths.is_windows() else os.path.expanduser(path)
 
 
 def normalise_site(text: str) -> str:
@@ -64,7 +72,7 @@ def build_draft(body: dict, brain=None) -> dict:
             "type": "github", "repo": repo, "branch": str(body.get("branch") or "").strip() or "main", "auth": "sign-in", "clone": "",
             "pending": body.get("gh_pending")}}        # not "pending": a Jira source in the same first run holds its own sign-in handle
     dest = str(body.get("dest") or "").strip() or default_folder(name)
-    return {"name": name, "sources": [source], "destination": {"type": "directory", "path": os.path.expanduser(dest)}}
+    return {"name": name, "sources": [source], "destination": {"type": "directory", "path": _expand(dest)}}
 
 
 SAMPLE_READ_ONLY = "Sample data: a made-up engineering team, bundled with the app. No sign-in, nothing is sent or read from your accounts."
@@ -121,7 +129,7 @@ def dest_check(body: dict) -> dict:
     draft = build_draft({**body, "dest": "", "target": "directory"})
     suggested = default_folder(draft["name"])
     typed = str(body.get("dest") or "").strip()
-    path = os.path.abspath(os.path.expanduser(typed or suggested))
+    path = winpaths.canonical(typed or suggested) if winpaths.is_windows() else os.path.abspath(os.path.expanduser(typed or suggested))
     reason = can_create(path)
     return {"ok": not reason, "suggested": suggested, "path": path, "exists": os.path.isdir(path), "reason": reason}
 

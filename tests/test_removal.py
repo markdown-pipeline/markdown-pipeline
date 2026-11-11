@@ -22,7 +22,7 @@ def two_folders(brain, add_pipeline, make_source):
 
 
 def md_files(brain):
-    return sorted(str(p.relative_to(brain.root)) for p in (brain.root / "raw").rglob("*.md"))
+    return sorted(p.relative_to(brain.root).as_posix() for p in (brain.root / "raw").rglob("*.md"))
 
 
 # pipeline removal -----------------------------------------------------------------------

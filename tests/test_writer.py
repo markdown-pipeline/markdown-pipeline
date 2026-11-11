@@ -18,7 +18,7 @@ def writer(brain):
 
 
 def tree(root):
-    return sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.name != ".gitignore")
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.name != ".gitignore")
 
 
 def test_writes_a_markdown_file_inside_raw_creating_folders(writer, brain_dir):

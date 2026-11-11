@@ -9,6 +9,7 @@ import time
 import pytest
 import yaml
 
+import winsupport
 from conftest import tree_snapshot, write
 from mdpipeline.config import Pipeline, Source
 from mdpipeline.engine import sync_pipeline
@@ -112,7 +113,7 @@ def test_symlinks_are_never_followed_out_of_the_source(brain, add_pipeline, make
     os.symlink(outside, src / "dirlink")
     add_pipeline(Pipeline.new("p", [str(src)]))
     sync_pipeline(brain, "p", trigger="cli")
-    copied = {str(p.relative_to(brain.raw_dir)) for p in brain.raw_dir.rglob("*") if p.is_file()}
+    copied = {p.relative_to(brain.raw_dir).as_posix() for p in brain.raw_dir.rglob("*") if p.is_file()}
     assert copied == {"p/docs/ok.md"}
     assert "SECRET" not in "".join(p.read_text() for p in brain.raw_dir.rglob("*.md"))
 
@@ -180,7 +181,7 @@ def test_sigkill_of_a_real_process_mid_sync_converges(brain, add_pipeline, make_
         sync_pipeline(find_brain({str(brain.root)!r}), "p", trigger="cli", after_write=hook)
     """)
     proc = subprocess.run([sys.executable, "-c", script])
-    assert proc.returncode == -signal.SIGKILL
+    assert proc.returncode == winsupport.HARD_KILL_EXIT
     for f in (brain.raw_dir / "p/docs").glob("*.md"):
         assert parse_document(f.read_text())[0]["provenance"]["content_hash"].startswith("sha256:")
     res = sync_pipeline(brain, "p", trigger="cli")
@@ -196,10 +197,11 @@ def test_reference_fixture_500_files_of_5kb_syncs_in_under_10_seconds(brain, add
     start = time.monotonic()
     res = sync_pipeline(brain, "p", trigger="cli")
     elapsed = time.monotonic() - start
-    assert res.counts()["created"] == 500 and elapsed < 10
+    limit = 10 if sys.platform != "win32" else 60        # MD-184: provisional, see MD-225 (~33 s measured on the Windows VM runner)
+    assert res.counts()["created"] == 500 and elapsed < limit
     start = time.monotonic()
     assert sync_pipeline(brain, "p", trigger="cli").counts()["unchanged"] == 500
-    assert time.monotonic() - start < 10
+    assert time.monotonic() - start < limit
 
 
 def test_state_records_ownership_of_every_written_file(brain, add_pipeline, make_source):

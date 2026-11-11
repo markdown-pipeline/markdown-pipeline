@@ -32,7 +32,7 @@ def home(tmp_path, monkeypatch):
         (h / d).mkdir(parents=True)
     (h / "projects" / "alpha" / "a1.md").write_text("# a1\n")
     (h / "projects" / "alpha" / "a2.md").write_text("# a2\n")
-    monkeypatch.setenv("HOME", str(h))
+    winsupport.set_home(monkeypatch, str(h))
     return h
 
 

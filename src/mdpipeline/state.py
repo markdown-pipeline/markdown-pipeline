@@ -15,6 +15,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from . import fsretry
 from .brain import Brain, ensure_config_dir
 
 BACKUP_GENERATIONS = 5      # state-1.json (newest) .. state-5.json; the spec asks for at least 3
@@ -146,13 +147,13 @@ def _keep_previous_as_backup(brain: Brain) -> None:
     for generation in range(BACKUP_GENERATIONS - 1, 0, -1):
         older = backup_path(brain, generation)
         if older.exists():
-            os.replace(older, backup_path(brain, generation + 1))
+            fsretry.replace(older, backup_path(brain, generation + 1))
     tmp = directory / f"{uuid.uuid4().hex}.tmp"
     with open(tmp, "wb") as handle:
         handle.write(current)
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(tmp, newest)
+    fsretry.publish(tmp, newest)
     ignore = brain.config_dir / ".gitignore"
     try:
         lines = ignore.read_text(encoding="utf-8").split() if ignore.exists() else []
@@ -181,7 +182,7 @@ def write_local_state(brain: Brain, data: bytes) -> None:
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(tmp, path)
+    fsretry.publish(tmp, path)
 
 
 RUNTIME_FILE = "runtime.json"     # local only: what a repository target must not commit (guard approvals in progress)
@@ -209,7 +210,7 @@ def _save_runtime(brain: Brain, pipelines: dict[str, "PipelineState"]) -> None:
         json.dump(data, handle, indent=1, sort_keys=True)
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(tmp, path)
+    fsretry.publish(tmp, path)
 
 
 def set_aside_state(brain: Brain, name: str) -> None:
@@ -217,7 +218,7 @@ def set_aside_state(brain: Brain, name: str) -> None:
     current = brain.config_dir / "state.json"
     if current.exists():
         backups_dir(brain).mkdir(exist_ok=True)
-        os.replace(current, backups_dir(brain) / name)
+        fsretry.replace(current, backups_dir(brain) / name)
 
 
 def install_state(brain: Brain, data: bytes) -> None:
@@ -227,4 +228,4 @@ def install_state(brain: Brain, data: bytes) -> None:
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(tmp, brain.config_dir / "state.json")
+    fsretry.publish(tmp, brain.config_dir / "state.json")

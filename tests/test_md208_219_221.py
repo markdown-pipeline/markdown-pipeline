@@ -108,6 +108,7 @@ def test_update_outside_a_brain_prints_no_error_and_exits_zero(nowhere, app_data
     assert code == 0 and "Error" not in out.out + out.err and "mdpipeline init" not in out.out + out.err
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 def test_update_prints_running_first_then_the_tools_output_then_the_final_line(nowhere, app_data, monkeypatch, capfd):
     def run(command):
         print("tool output", flush=False)
@@ -120,6 +121,7 @@ def test_update_prints_running_first_then_the_tools_output_then_the_final_line(n
     assert out.index("Running:") < out.index("tool output") < out.index("Updated to version 9.9.9.")
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 def test_update_flushes_before_the_command_runs(nowhere, app_data, monkeypatch):
     seen = []
     monkeypatch.setattr(sys.stdout, "flush", lambda: seen.append("flush"))

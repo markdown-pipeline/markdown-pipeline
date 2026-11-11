@@ -7,6 +7,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from mdpipeline.naming import SEPARATOR
 
 README = Path(__file__).parent.parent / "docs" / "reference.md"
@@ -25,6 +27,7 @@ def test_readme_covers_the_required_topics():
         assert topic in text, topic
 
 
+@pytest.mark.windows_unsupported("the quickstart block is a bash script for macOS/Linux/WSL; Windows has its own install path")
 def test_quickstart_block_runs_verbatim_in_a_clean_home(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

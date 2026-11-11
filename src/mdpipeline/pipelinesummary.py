@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import re
 
+from . import winpaths
 from .brain import Brain
 from .config import DEFAULT_EXCLUDE, DEFAULT_INCLUDE, Pipeline, Source
 from .destinations import describe_destination
@@ -17,6 +18,8 @@ _PROJECT_ONLY = re.compile(r'^\s*project\s*=\s*"?([A-Za-z][A-Za-z0-9_]*)"?\s*$',
 
 
 def _tilde(path: str) -> str:
+    if winpaths.is_windows():          # MD-223: Windows shows the full path (marketing review); only Linux/macOS shorten the home folder
+        return path
     home = os.path.expanduser("~")
     if home and home != "~" and (path == home or path.startswith(home.rstrip("/") + "/")):
         return "~" + path[len(home.rstrip("/")):]

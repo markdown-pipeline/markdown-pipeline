@@ -6,6 +6,7 @@ from mdpipeline.config import Pipeline, Source, load_config
 from mdpipeline.engine import sync_pipeline
 from mdpipeline.state import State
 from uihelper import running_ui
+import winsupport
 
 
 def draft(sources, **kw):
@@ -31,7 +32,7 @@ def src2(make_source):
 # folder check -----------------------------------------------------------------------------------
 def test_folder_check_counts_markdown_files_and_expands_tilde(brain, src2, monkeypatch, tmp_path):
     a, _ = src2
-    monkeypatch.setenv("HOME", str(tmp_path / "sources"))
+    winsupport.set_home(monkeypatch, str(tmp_path / "sources"))
     with running_ui(brain) as ui:
         _, res = ui.post("/api/folder-check", {"path": str(a)})
         assert res == {"exists": True, "is_dir": True, "md_files": 4, "path": str(a)}

@@ -211,6 +211,70 @@ def _run(cmd: list[str]) -> tuple[int, str]:
     return done.returncode, (done.stdout + done.stderr).strip()
 
 
+PRIVATE_REPO = os.environ.get("MDPIPELINE_PRIVATE_REPO", "shvil-ai/md-pipeline-app")          # where linux-tests / windows-tests run (MD-214)
+GATED_WORKFLOWS = ("linux-tests", "windows-tests")
+
+
+def ci_problem(workflow: str, runs: list[dict], shas: set[str], repo: str = PRIVATE_REPO) -> str | None:
+    """MD-214: why the newest ``workflow`` run on one of ``shas`` does not allow a release, or None when it is green. Names the run's URL."""
+    mine = sorted((r for r in runs if r.get("headSha") in shas), key=lambda r: r.get("createdAt", ""))
+    if not mine:
+        latest = sorted(runs, key=lambda r: r.get("createdAt", ""))[-1:] or [None]
+        seen = f" The latest run is on another commit ({latest[0]['headSha'][:7]}): {latest[0]['url']}" if latest[0] else ""
+        return (f"no {workflow} run on the release commit.{seen} Start one by hand and wait for it: "
+                f"gh workflow run {workflow} --repo {repo} --ref <the release branch or tag>")
+    last = mine[-1]
+    if last.get("status") != "completed":
+        return f"{workflow} is still running on the release commit: {last['url']}"
+    if last.get("conclusion") != "success":
+        return f"{workflow} is not green on the release commit ({last.get('conclusion') or 'no result'}): {last['url']}"
+    return None
+
+
+def _ci_gate(args, runner: Callable[[list[str]], tuple[int, str]], version: str, notes: str | None) -> int:
+    """``--check-ci`` / ``--create-draft`` (MD-214): both CI workflows green on exactly the tagged release commit, else stop; Windows has a logged override."""
+    tag = tag_for(version)
+    if args.allow_red_windows is not None and not args.allow_red_windows.strip():
+        raise ReleaseError("--allow-red-windows needs a reason (it is printed and recorded in the draft's notes)")
+    code, text = runner(["git", "rev-parse", f"{tag}^{{commit}}"])
+    if code != 0:
+        raise ReleaseError(f"tag {tag} does not exist here: tag the release commit on main first (git tag {tag} <sha> && git push origin {tag})")
+    sha = text.strip().splitlines()[-1]
+    code, text = runner(["git", "rev-list", "--parents", "-n", "1", sha])
+    parents = text.split()[1:] if code == 0 else []
+    # linux-tests runs on the pull request, so its run carries the PR head, the second parent of the merge commit the tag points at
+    accepted = {"linux-tests": {sha, *parents[1:2]}, "windows-tests": {sha}}
+    problems: dict[str, str] = {}
+    for workflow in GATED_WORKFLOWS:
+        code, text = runner(["gh", "run", "list", "--repo", args.private_repo, "--workflow", workflow, "--limit", "50",
+                             "--json", "databaseId,headSha,status,conclusion,url,createdAt,event"])
+        if code != 0:
+            raise ReleaseError(f"could not read the {workflow} runs from {args.private_repo}:\n{text}")
+        try:
+            runs = json.loads(text or "[]")
+        except ValueError as exc:
+            raise ReleaseError(f"could not read the {workflow} runs from {args.private_repo}: {exc}") from exc
+        problem = ci_problem(workflow, runs, accepted[workflow], args.private_repo)
+        if problem:
+            problems[workflow] = problem
+    override = ""
+    if "windows-tests" in problems and args.allow_red_windows is not None:
+        override = f"windows-tests override: {args.allow_red_windows.strip()} ({problems.pop('windows-tests')})"
+        print("OVERRIDE " + override)
+    if problems:
+        raise ReleaseError("not releasing; " + "; ".join(problems.values()))
+    print(f"CI gate: linux-tests and windows-tests are green on {tag} ({sha[:7]})" + (" (windows-tests overridden)" if override else ""))
+    if not args.create_draft:
+        return 0
+    body = (notes if notes is not None else f"Markdown Pipeline {version}") + (f"\n\n---\nRelease gate {override}\n" if override else "")
+    code, text = runner(["gh", "release", "create", tag, "--repo", args.private_repo, "--draft", "--verify-tag", "--title", f"Markdown Pipeline {version}",
+                         "--notes", body])
+    if code != 0:
+        raise ReleaseError("creating the draft release failed:\n" + text)
+    print(f"draft release created for {tag} on {args.private_repo} (commit {sha}): {text.strip()}")
+    return 0
+
+
 def run(argv: list[str] | None = None, runner: Callable[[list[str]], tuple[int, str]] = _run) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", default=os.environ.get("MDPIPELINE_RELEASE_REPO", DEFAULT_REPO))
@@ -220,6 +284,10 @@ def run(argv: list[str] | None = None, runner: Callable[[list[str]], tuple[int, 
     parser.add_argument("--publish", action="store_true")
     parser.add_argument("--replace", action="store_true")
     parser.add_argument("--skip-repo-settings", action="store_true", help="with --publish: do not run `gh repo edit` (it needs Administration rights; CI's token has none)")
+    parser.add_argument("--check-ci", action="store_true", help="MD-214: only check that linux-tests and windows-tests are green on the tagged release commit")
+    parser.add_argument("--create-draft", action="store_true", help="MD-214: check as --check-ci, then create the draft release on the private repo for the tag")
+    parser.add_argument("--allow-red-windows", metavar="REASON", help="with --create-draft: go ahead although windows-tests is not green; the reason is printed and recorded in the draft")
+    parser.add_argument("--private-repo", default=PRIVATE_REPO, help="the private repo whose CI runs are checked; default: " + PRIVATE_REPO)
     parser.add_argument("--server-json", default=str(SERVER_JSON), help="attached to the release; default: server.json in the app folder")
     args = parser.parse_args(argv)
     try:
@@ -234,6 +302,8 @@ def run(argv: list[str] | None = None, runner: Callable[[list[str]], tuple[int, 
                 notes = Path(args.notes_file).read_text(encoding="utf-8")
             except OSError as exc:
                 raise ReleaseError(f"cannot read the release notes file {args.notes_file}: {exc.strerror or exc}") from exc
+        if args.check_ci or args.create_draft:
+            return _ci_gate(args, runner, version, notes)
         if args.wheel:
             wheel = Path(args.wheel)
         else:

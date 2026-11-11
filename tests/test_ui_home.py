@@ -87,8 +87,8 @@ def test_each_row_shows_name_folders_target_status_and_last_sync(two):
         _, st = ui.get("/api/state")
     multi, one = rows(st)["multi"], rows(st)["one"]
     assert multi["folders_text"] == "2 folders: raw, wiki" and [s["label"] for s in multi["sources"]] == ["raw", "wiki"]
-    assert multi["sources"][0]["path"].endswith("/raw") and multi["target"] == "raw/{pipeline}/{source}/{relpath}"
-    assert one["folders_text"].endswith("/single") and one["target"] == "raw/projects/one/{relpath}"
+    assert multi["sources"][0]["path"].replace("\\", "/").endswith("/raw") and multi["target"] == "raw/{pipeline}/{source}/{relpath}"
+    assert one["folders_text"].replace("\\", "/").endswith("/single") and one["target"] == "raw/projects/one/{relpath}"
     assert multi["status"] == "never" and multi["last_sync_ts"] is None
     assert one["status"] == "ok" and one["last_sync_ts"] and one["age_seconds"] < 5 and one["summary"] == "1 created"
 

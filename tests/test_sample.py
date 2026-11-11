@@ -6,6 +6,7 @@ import socket
 import pytest
 import yaml
 
+import winsupport
 from mdpipeline import firstrun, sample
 
 REAL_NAMES = re.compile(r"atlassian\.net|@[a-z0-9-]+\.(com|io|dev|org)|github\.com/|slack\.com", re.I)
@@ -19,7 +20,7 @@ def _front(text: str) -> dict:
 @pytest.fixture
 def files(tmp_path):
     root = sample.source_dir()
-    return {str(p.relative_to(root)): p.read_text(encoding="utf-8") for p in sorted(root.rglob("*.md"))}
+    return {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8") for p in sorted(root.rglob("*.md"))}
 
 
 def test_source_dir_lives_in_the_app_data_folder_not_the_users(app_data):
@@ -95,7 +96,7 @@ def test_the_draft_is_labelled_sample_everywhere():
     d = firstrun.build_draft({"source": "sample"})
     assert d["name"] == "sample"
     assert d["sources"] == [{"path": str(sample.source_dir()), "label": "Sample"}]
-    assert d["destination"]["path"] == os.path.expanduser("~/markdown-pipeline/sample")
+    assert d["destination"]["path"] == (winsupport.default_folder("sample") if os.name == "nt" else os.path.expanduser("~/markdown-pipeline/sample"))
 
 
 def test_a_chosen_destination_still_applies_to_the_sample(tmp_path):

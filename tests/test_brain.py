@@ -10,7 +10,7 @@ from mdpipeline.brain import BrainError, find_brain, init_brain
 
 
 def snapshot(root: Path) -> list[str]:
-    return sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
 
 
 def test_init_in_dir_with_raw_creates_human_readable_config_inside_brain(brain_dir):

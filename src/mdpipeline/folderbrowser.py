@@ -9,6 +9,7 @@ with the session token and an Origin check.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from .brain import Brain
 from .config import load_config
@@ -73,12 +74,20 @@ def _resolve(path: str) -> tuple[str, dict | None]:
     return full, None
 
 
-def _crumbs(path: str) -> list[dict]:
-    out, built = [{"name": os.sep, "path": os.sep}], os.sep
-    for part in [p for p in path.split(os.sep) if p]:
-        built = os.path.join(built, part)
-        out.append({"name": part, "path": built})
+def _crumbs(path: str, flavour=Path) -> list[dict]:
+    """One crumb per folder from the root (on Windows, the drive: ``C:\\``) down; every crumb path is absolute (MD-224). ``flavour`` lets tests use the other platform's rules."""
+    parts = flavour(path).parts
+    out, built = [{"name": parts[0], "path": parts[0]}], flavour(parts[0])
+    for part in parts[1:]:
+        built = built / part
+        out.append({"name": part, "path": str(built)})
     return out
+
+
+def _parent(path: str, flavour=Path) -> str | None:
+    """The folder above ``path``; ``None`` at the root (on Windows, a drive root: the picker stays there, no error; MD-224 AC4)."""
+    here = flavour(path)
+    return None if here.parent == here else str(here.parent)
 
 
 def _recent(brain: Brain | None) -> list[str]:
@@ -124,8 +133,8 @@ def list_dir(brain: Brain | None, path: str, *, show_hidden: bool = False, start
     names.sort(key=lambda n: (n[0].lower(), n[0]))
     start = max(int(start or 0), 0)
     page = names[start:start + PAGE]
-    parent = os.path.dirname(shown)
-    out = {"ok": True, "path": shown, "parent": parent if parent and parent != shown else None, "crumbs": _crumbs(shown),
+    parent = _parent(shown)
+    out = {"ok": True, "path": shown, "parent": parent, "crumbs": _crumbs(shown),
            "dirs": [{"name": n, "path": os.path.join(shown, n), "readable": ok,
                      **({} if ok else {"reason": "This computer doesn't let this app open it."})} for n, ok in page],
            "total": len(names), "next_start": start + len(page), "is_last": start + len(page) >= len(names),

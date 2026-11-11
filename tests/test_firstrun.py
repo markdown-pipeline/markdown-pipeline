@@ -1,15 +1,16 @@
 """MD-118: the guided first run, backend. Defaults everywhere, a review before anything is written, resume state."""
 import os
 
+import winsupport
 from mdpipeline import firstrun
 
 
 def test_default_folder_is_under_markdown_pipeline_with_a_cli_friendly_name():
-    assert firstrun.default_folder("Acme Jira!") == "~/markdown-pipeline/acme-jira"
+    assert firstrun.default_folder("Acme Jira!") == winsupport.default_folder("acme-jira")
 
 
 def test_default_folder_never_has_an_empty_name():
-    assert firstrun.default_folder("???") == "~/markdown-pipeline/source"
+    assert firstrun.default_folder("???") == winsupport.default_folder("source")
 
 
 def test_folder_draft_takes_every_default_and_names_the_pipeline_from_the_source(tmp_path):
@@ -18,7 +19,7 @@ def test_folder_draft_takes_every_default_and_names_the_pipeline_from_the_source
     d = firstrun.build_draft({"source": "folder", "path": str(src)})
     assert d["name"] == "team-wiki"
     assert d["sources"] == [{"path": str(src), "label": "team-wiki"}]
-    assert d["destination"] == {"type": "directory", "path": os.path.expanduser("~/markdown-pipeline/team-wiki")}
+    assert d["destination"] == {"type": "directory", "path": winsupport.default_folder("team-wiki") if os.name == "nt" else os.path.expanduser("~/markdown-pipeline/team-wiki")}
 
 
 def test_a_chosen_destination_replaces_the_default(tmp_path):
@@ -45,6 +46,7 @@ from fake_jira import FakeJira  # noqa: E402
 from mdpipeline import jira_api  # noqa: E402
 from test_jira_sync import EMAIL, TOKEN  # noqa: E402
 from uihelper import running_ui  # noqa: E402
+import winsupport
 
 
 @pytest.fixture
@@ -115,7 +117,7 @@ def test_write_creates_the_folder_the_pipeline_and_the_files_with_default_schedu
 
 
 def test_write_uses_the_review_defaults_when_nothing_is_changed(brain, notes, monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    winsupport.set_home(monkeypatch, str(tmp_path / "home"))
     with running_ui(brain) as ui:
         _, res = ui.post("/api/first-run/write", {"source": "folder", "path": str(notes)})
     assert res["folder"] == str(tmp_path / "home" / "markdown-pipeline" / "team-wiki")

@@ -48,7 +48,7 @@ def converge(brain, **kw):
 
 
 def raw_files(brain):
-    return sorted(str(p.relative_to(brain.root)) for p in (brain.root / "raw").rglob("*.md"))
+    return sorted(p.relative_to(brain.root).as_posix() for p in (brain.root / "raw").rglob("*.md"))
 
 
 NEW = [f"raw/p/docs/2026-10-01{S}phase1-prd.md", f"raw/p/docs/2026-09-30{S}seed-idea.md",

@@ -5,7 +5,11 @@ import pytest
 
 from mdpipeline.config import Pipeline, Source
 from mdpipeline.pipelinesummary import summary_sentence
+import winsupport
 from uihelper import running_ui
+
+
+A = os.path.abspath            # a Source stores the absolute path; on Windows "/data/notes" becomes "C:\\data\\notes"
 
 
 def folder(path="/data/notes", label="notes"):
@@ -22,13 +26,17 @@ def text(brain, p):
 
 def test_a_folder_to_the_brain_directory_under_raw(brain):
     p = Pipeline.new("p", [folder()], target="raw/{relpath}")
-    assert text(brain, p) == f"Turns /data/notes into Markdown files in {brain.root}, under raw/. Checks for changes every hour."
+    assert text(brain, p) == f"Turns {A('/data/notes')} into Markdown files in {brain.root}, under raw/. Checks for changes every hour."
 
 
-def test_the_home_folder_is_shown_as_a_tilde(brain, monkeypatch):
-    monkeypatch.setenv("HOME", "/home/someone")
-    p = Pipeline.new("p", [folder("/home/someone/biz/notes")], target="raw/{relpath}")
-    assert "Turns ~/biz/notes into Markdown files in" in text(brain, p)
+def test_the_home_folder_is_shown_as_a_tilde_on_linux_and_in_full_on_windows(brain, monkeypatch):
+    """Linux shortens the home folder to ~; on Windows the summary shows the full path (MD-223, marketing's review)."""
+    home = A("/home/someone")
+    winsupport.set_home(monkeypatch, home)
+    notes = os.path.join(home, "biz", "notes")
+    p = Pipeline.new("p", [folder(notes)], target="raw/{relpath}")
+    shown = notes if os.name == "nt" else "~/biz/notes"
+    assert f"Turns {shown} into Markdown files in" in text(brain, p)
 
 
 def test_an_empty_template_means_the_root_of_the_output_folder(brain):
@@ -60,14 +68,14 @@ def test_a_jira_jql_that_is_not_a_plain_project_is_shown_shortened(brain):
 def test_several_sources_are_listed_then_counted(brain):
     p = Pipeline.new("p", [folder("/a", "a"), folder("/b", "b"), jira(), folder("/c", "c")], target="raw/{relpath}")
     out = text(brain, p)
-    assert "Turns /a, /b and 2 more into Markdown files in" in out
+    assert f"Turns {A('/a')}, {A('/b')} and 2 more into Markdown files in" in out
 
 
 def test_a_source_switched_off_is_not_listed(brain):
     off = folder("/off", "off")
     off.enabled = False
     out = text(brain, Pipeline.new("p", [folder("/a", "a"), off], target="raw/{relpath}"))
-    assert "/off" not in out and "Turns /a into" in out
+    assert A("/off") not in out and f"Turns {A('/a')} into" in out
 
 
 @pytest.mark.parametrize("schedule,words", [("15m", "Checks for changes every 15 minutes."), ("1h", "Checks for changes every hour."), ("6h", "Checks for changes every 6 hours."),
@@ -82,7 +90,7 @@ def test_the_schedule_in_words(brain, schedule, words):
 def test_a_paused_pipeline_says_it_is_paused(brain):
     p = Pipeline.new("p", [folder()], target="raw/{relpath}")
     p.paused = True
-    assert text(brain, p).startswith("Paused. ") and "Turns /data/notes into Markdown files" in text(brain, p)
+    assert text(brain, p).startswith("Paused. ") and f"Turns {A('/data/notes')} into Markdown files" in text(brain, p)
 
 
 def test_active_filters_are_named(brain):
@@ -111,5 +119,5 @@ def test_the_view_page_carries_the_sentence_and_show_json_schema_is_unchanged(br
 def test_one_verb_fits_a_jira_source_and_a_folder_source(brain):
     folder_text = text(brain, Pipeline.new("p", [folder()], target="raw/{relpath}"))
     jira_text = text(brain, Pipeline.new("p", [jira()], target="raw/{relpath}"))
-    assert folder_text.startswith("Turns /data/notes into Markdown files in ")
+    assert folder_text.startswith(f"Turns {A('/data/notes')} into Markdown files in ")
     assert jira_text.startswith("Turns ") and " into Markdown files in " in jira_text and "Copies" not in jira_text

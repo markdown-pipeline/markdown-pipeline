@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+import winsupport
 from conftest import tree_snapshot, write
 from mdpipeline.cli import main
 from mdpipeline.config import Config, Pipeline, Source, load_config, save_config
@@ -67,7 +68,7 @@ def guarded_tree(w) -> dict:
 
 
 def raw_md(w, folder="raw/p") -> list[str]:
-    return sorted(str(p.relative_to(w["root"] / folder)) for p in (w["root"] / folder).rglob("*.md"))
+    return sorted(p.relative_to(w["root"] / folder).as_posix() for p in (w["root"] / folder).rglob("*.md"))
 
 
 def add(w, **kw):
@@ -154,7 +155,7 @@ def test_m2_sigkill_in_the_middle_of_a_rename_converges(world):
                 os.kill(os.getpid(), 9)
         sync_pipeline(find_brain({str(w['root'])!r}), "p", now={at(2)}, trigger="cli", approve=True, after_write=hook)
     """)
-    assert subprocess.run([sys.executable, "-c", script]).returncode == -signal.SIGKILL
+    assert subprocess.run([sys.executable, "-c", script]).returncode == winsupport.HARD_KILL_EXIT
     assert [p for p in w["root"].rglob("*.tmp")] == []
     for _ in range(3):                                                    # re-running converges (a changed plan is re-shown)
         res = sync_pipeline(b, "p", now=at(2), trigger="cli", approve=True)
@@ -164,7 +165,7 @@ def test_m2_sigkill_in_the_middle_of_a_rename_converges(world):
     names = raw_md(w)
     assert len(names) == len(set(n.casefold() for n in names)) == 18        # 6 sources + 12 bulk, no duplicates
     assert all(any(d in n for d in ("2026-10-04", "2026-10-01", "2026-09-30")) for n in names)     # first-seen kept, not today's
-    assert sorted(str(p.relative_to(w["root"])) for p in (w["root"] / "raw/p").rglob("*.md")) == sorted(State.load(b).pipeline("p").files)
+    assert sorted(p.relative_to(w["root"]).as_posix() for p in (w["root"] / "raw/p").rglob("*.md")) == sorted(State.load(b).pipeline("p").files)
     assert sync_pipeline(b, "p", now=at(3)).counts()["unchanged"] == 18
     assert guarded_tree(w) == guarded
 
@@ -292,7 +293,7 @@ def test_m6_rebuild_never_claims_a_hand_written_file(owned):
     raw_before = tree_snapshot(w["root"] / "raw")
     apply_rebuild(b)
     owned_now = State.load(b).pipeline("p").files
-    for path in ("raw/p/my-readme.md", "raw/p/plain-note.md", str(edited.relative_to(w["root"]))):
+    for path in ("raw/p/my-readme.md", "raw/p/plain-note.md", edited.relative_to(w["root"]).as_posix()):
         assert path not in owned_now
     assert len(owned_now) == 5
     assert tree_snapshot(w["root"] / "raw") == raw_before                      # the rebuild writes nothing to raw/

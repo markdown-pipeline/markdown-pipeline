@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
+from . import winpaths, fsretry
 from .brain import Brain, ConfigReadError
 
 DEFAULT_INCLUDE = ["**/*.md"]
@@ -22,6 +23,8 @@ DEFAULT_SCHEDULE = "1h"
 
 def normalise_path(path: str) -> str:
     """Absolute, ``~`` expanded, no trailing slash. Symlinks are NOT resolved here."""
+    if winpaths.is_windows():          # MD-223: the same folder typed two ways is one string
+        return winpaths.canonical(path)
     return os.path.abspath(os.path.expanduser(path))
 
 
@@ -167,7 +170,7 @@ def _migrate_brain_level_target(brain: Brain, data: dict) -> dict:
     tmp = brain.config_path.with_suffix(".yaml.tmp")
     try:
         tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, brain.config_path)
+        fsretry.replace(tmp, brain.config_path)
     except OSError as exc:
         raise ConfigReadError(f"Cannot migrate the configuration {brain.config_path}: {exc}") from exc
     return migrated
@@ -189,4 +192,4 @@ def save_config(brain: Brain, config: Config) -> None:
     text = yaml.safe_dump(document, sort_keys=False, default_flow_style=False, allow_unicode=True)
     tmp = brain.config_path.with_suffix(".yaml.tmp")
     tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, brain.config_path)
+    fsretry.publish(tmp, brain.config_path)

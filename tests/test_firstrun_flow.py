@@ -2,6 +2,7 @@
 import json
 
 import pytest
+import winsupport
 
 from fake_jira import FakeJira
 from mdpipeline import jira_api, jira_picker, usage_events
@@ -49,13 +50,13 @@ def test_dest_check_suggests_the_default_folder_for_a_folder_source(brain, tmp_p
     src.mkdir()
     with running_ui(brain) as ui:
         _, res = ui.post("/api/first-run/dest-check", {"source": "folder", "path": str(src), "dest": ""})
-    assert res["suggested"] == "~/markdown-pipeline/team-wiki" and res["ok"] is True and res["exists"] is False
+    assert res["suggested"] == winsupport.default_folder("team-wiki") and res["ok"] is True and res["exists"] is False
 
 
 def test_dest_check_suggests_the_site_name_for_jira(brain):
     with running_ui(brain) as ui:
         _, res = ui.post("/api/first-run/dest-check", {"source": "jira", "site": "acme", "dest": ""})
-    assert res["suggested"] == "~/markdown-pipeline/acme-jira"
+    assert res["suggested"] == winsupport.default_folder("acme-jira")
 
 
 def test_dest_check_says_an_existing_folder_exists_and_a_new_one_will_be_created(brain, tmp_path):

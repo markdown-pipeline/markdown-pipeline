@@ -7,6 +7,8 @@ import subprocess
 import sys
 import time
 
+import pytest
+
 import leakguard
 
 
@@ -25,6 +27,7 @@ def _wait_for(predicate, seconds=5.0):
     return False
 
 
+@pytest.mark.windows_unsupported("the leak guard reads /proc, which Windows does not have, and the tests kill a process group with os.killpg")
 def test_a_background_process_started_after_the_baseline_is_reported_as_a_leak():
     before = leakguard.background_pids()
     proc = _spawn_fake_background()
@@ -35,6 +38,7 @@ def test_a_background_process_started_after_the_baseline_is_reported_as_a_leak()
         proc.wait()
 
 
+@pytest.mark.windows_unsupported("the leak guard reads /proc, which Windows does not have, and the tests kill a process group with os.killpg")
 def test_a_background_process_already_running_at_the_baseline_is_not_a_leak():
     proc = _spawn_fake_background()
     try:
@@ -46,6 +50,7 @@ def test_a_background_process_already_running_at_the_baseline_is_not_a_leak():
         proc.wait()
 
 
+@pytest.mark.windows_unsupported("the leak guard reads /proc, which Windows does not have, and the tests kill a process group with os.killpg")
 def test_a_background_process_from_another_python_is_not_ours_to_judge(tmp_path):
     """The owner's installed app runs from ~/.local/share/uv/tools/...: it is neither a leak nor ours to kill."""
     other = tmp_path / "other-python"
@@ -61,6 +66,7 @@ def test_a_background_process_from_another_python_is_not_ours_to_judge(tmp_path)
         proc.wait()
 
 
+@pytest.mark.windows_unsupported("the leak guard reads /proc, which Windows does not have, and the tests kill a process group with os.killpg")
 def test_kill_stops_the_leaked_processes():
     proc = _spawn_fake_background()
     assert _wait_for(lambda: proc.pid in leakguard.background_pids())

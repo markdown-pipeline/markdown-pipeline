@@ -13,10 +13,19 @@ import os
 import threading
 from pathlib import Path
 
-from . import filelock
+from . import filelock, fsretry
 from .vault import data_dir
 
 _thread_lock = threading.RLock()
+_held = threading.local()          # depth of update() blocks this thread is inside (its reads must not take the file lock a second time)
+
+
+class ScheduleSaveError(OSError):
+    """The schedule could not be saved right now. The message is for the person: what happened and what to do; the old schedule is untouched."""
+
+
+_SAVE_FAILED = ("Markdown Pipeline could not save the schedule just now because another program is using its settings file. "
+                "Your previous schedule is unchanged. Please try again in a moment.")
 
 
 def _defaults() -> dict:
@@ -28,10 +37,28 @@ class SchedulerStore:
         self._path: Path = data_dir() / "scheduler.json"
 
     def read(self) -> dict:
-        """The stored data with defaults filled in. An unreadable file reads as the defaults: the scheduler must keep running."""
+        """The stored data with defaults filled in. An unreadable file reads as the defaults: the scheduler must keep running.
+
+        MD-226: a read takes the same lock as an update (unless this thread is inside an update already), so on Windows a read never holds the file open
+        while ``os.replace`` runs, and never sees it half-written.
+        """
+        if getattr(_held, "depth", 0):
+            return self._read_file()
+        try:
+            with _thread_lock:
+                fd = os.open(self._path.with_name("scheduler.lock"), os.O_RDWR)       # never created by a read: viewing writes nothing
+                try:
+                    filelock.try_lock(fd, blocking=True)
+                    return self._read_file()
+                finally:
+                    os.close(fd)
+        except OSError:                                    # no lock file yet (nothing was ever saved), or it cannot be taken: read as before
+            return self._read_file()
+
+    def _read_file(self) -> dict:
         data = _defaults()
         try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
+            raw = json.loads(fsretry.retry_permission(lambda: self._path.read_text(encoding="utf-8")))     # Windows may refuse a read for a moment
         except (OSError, ValueError):
             return data
         if isinstance(raw, dict):
@@ -50,12 +77,20 @@ class SchedulerStore:
             fd = os.open(self._path.with_name("scheduler.lock"), os.O_RDWR | os.O_CREAT, 0o600)
             try:
                 filelock.try_lock(fd, blocking=True)
-                data = self.read()
-                working = copy.deepcopy(data)
-                yield working
+                _held.depth = getattr(_held, "depth", 0) + 1
+                try:
+                    data = self._read_file()
+                    working = copy.deepcopy(data)
+                    yield working
+                finally:
+                    _held.depth -= 1
                 tmp = self._path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
-                tmp.write_text(json.dumps(working, indent=1), encoding="utf-8")
-                os.replace(tmp, self._path)
+                try:
+                    tmp.write_text(json.dumps(working, indent=1), encoding="utf-8")
+                    fsretry.retry_permission(lambda: os.replace(tmp, self._path))
+                except PermissionError as e:
+                    tmp.unlink(missing_ok=True)
+                    raise ScheduleSaveError(_SAVE_FAILED) from e
             finally:
                 os.close(fd)
 

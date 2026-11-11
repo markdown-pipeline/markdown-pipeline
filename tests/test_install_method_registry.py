@@ -175,9 +175,9 @@ def test_uvx_uninstall_turns_background_sync_off_and_says_so(tmp_path, monkeypat
     import subprocess
 
     env = {k: v for k, v in os.environ.items()} | {"MDPIPELINE_DATA_DIR": str(tmp_path / "data"), "MDPIPELINE_INSTALL_METHOD": "uvx",
-                                                   "MDPIPELINE_NO_BACKGROUND_START": "1", "XDG_CONFIG_HOME": str(tmp_path / "cfg"), "HOME": str(tmp_path)}
+                                                   "MDPIPELINE_NO_BACKGROUND_START": "1", "XDG_CONFIG_HOME": str(tmp_path / "cfg"), "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)}
     done = subprocess.run([sys.executable, "-m", "mdpipeline", "uninstall"], env=env, capture_output=True, text=True, timeout=60)
-    assert done.returncode == 0 and "Background sync is off and its login item is removed." in done.stdout
+    assert done.returncode == 0 and ("Background sync is off and it no longer starts when you sign in to Windows." if sys.platform == "win32" else "Background sync is off and its login item is removed.") in done.stdout
     assert "uv cache clean mdpipeline" in done.stdout and "installs nothing else" not in done.stdout
 
 

@@ -8,6 +8,7 @@ from mdpipeline.config import Pipeline, load_config
 from mdpipeline.engine import sync_pipeline
 from mdpipeline.service import NotFound, set_schedule
 from mdpipeline.status import brain_status
+import winsupport
 
 HOUR = 3600
 
@@ -95,7 +96,7 @@ def login_item(monkeypatch):
 def test_the_first_turn_on_installs_the_login_item_starts_it_and_says_so_in_plain_words(app_data, login_item):
     text = scheduler.ensure_background()
     assert login_item == ["enable", "start"]
-    assert "keeps running when this window is closed" in text and "starts at login" in text and "turn it off any time" in text
+    assert "keeps running when this window is closed" in text and winsupport.STARTS_AT_LOGIN in text and "turn it off any time" in text
 
 
 def test_the_announcement_is_made_only_once(app_data, login_item):
@@ -130,9 +131,9 @@ def test_the_first_sync_turns_it_on_the_cli_shows_the_announcement(brain, add_pi
     add_pipeline(Pipeline.new("p", [str(make_source("a", {"1.md": "one"}))]))
     assert main(["--brain", str(brain.root), "sync", "p"]) == 0
     out = capsys.readouterr().out
-    assert "starts at login" in out and login_item == ["enable", "start"]
+    assert winsupport.STARTS_AT_LOGIN in out and login_item == ["enable", "start"]
     main(["--brain", str(brain.root), "sync", "p"])
-    assert "starts at login" not in capsys.readouterr().out
+    assert winsupport.STARTS_AT_LOGIN not in capsys.readouterr().out
 
 
 def test_a_scheduled_run_never_announces_or_installs_anything(synced, login_item):
@@ -145,7 +146,7 @@ def test_the_announcement_stays_pending_until_it_is_acknowledged(app_data, login
     from mdpipeline.uiapi import background_view
 
     scheduler.ensure_background()
-    assert background_view()["announce_pending"] is True and background_view()["announcement"] == scheduler.ANNOUNCEMENT
+    assert background_view()["announce_pending"] is True and background_view()["announcement"] == scheduler.announcement()
     scheduler.acknowledge_announcement()
     assert background_view()["announce_pending"] is False and "announcement" not in background_view()
 
@@ -171,7 +172,7 @@ def test_the_cli_sync_acknowledges_what_it_printed(brain, add_pipeline, make_sou
 
     add_pipeline(Pipeline.new("p", [str(make_source("a", {"1.md": "one"}))]))
     main(["--brain", str(brain.root), "sync", "p"])
-    assert "starts at login" in capsys.readouterr().out and background_view()["announce_pending"] is False
+    assert winsupport.STARTS_AT_LOGIN in capsys.readouterr().out and background_view()["announce_pending"] is False
 
 
 def test_the_cli_says_when_background_sync_is_on_but_not_running(synced, capsys):

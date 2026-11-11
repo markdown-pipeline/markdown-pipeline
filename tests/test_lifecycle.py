@@ -15,6 +15,7 @@ def ran(monkeypatch):
     return calls
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 @pytest.mark.parametrize("method,expected", [
     ("uv", ["uv", "tool", "upgrade", "mdpipeline"]),
     ("script", ["sh", "-c", "curl -fsSL " + lifecycle.INSTALL_URL + " | sh"]),    # MD-131 AC6: a release install moves by running the install command again
@@ -27,6 +28,7 @@ def test_update_runs_the_one_command_of_the_install_method(method, expected, ran
     assert "Updated" in capsys.readouterr().out
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 def test_update_with_pip_uses_the_same_python(ran, monkeypatch):
     import sys
 
@@ -47,6 +49,7 @@ def test_dry_run_prints_the_command_and_runs_nothing(ran, monkeypatch, capsys):
     assert ran == [] and "uv tool upgrade mdpipeline" in capsys.readouterr().out
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 def test_a_failed_update_says_so_and_changes_nothing_else(monkeypatch, capsys):
     monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "uv")
     monkeypatch.setattr(lifecycle, "run_command", lambda cmd: 1)
@@ -54,6 +57,7 @@ def test_a_failed_update_says_so_and_changes_nothing_else(monkeypatch, capsys):
     assert "not updated" in capsys.readouterr().err.lower()
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 def test_a_missing_package_manager_is_a_plain_message_not_a_crash(monkeypatch, capsys):
     monkeypatch.setenv("MDPIPELINE_INSTALL_METHOD", "uv")
 

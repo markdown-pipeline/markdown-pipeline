@@ -17,6 +17,7 @@ ALLOWED_WRITERS = {
     "writer.py": "the only writer of brain content (raw/)",
     "config.py": "saves .mdpipeline/config.yaml",
     "state.py": "saves .mdpipeline/state.json",
+    "fsretry.py": "moves a finished temp file over its target and waits out a short Windows refusal (MD-226, MD-228); writes no content, deletes only the temp file it was given",
     "log.py": "appends .mdpipeline/log.jsonl",
     "locking.py": "the .mdpipeline/lock file",
     "brain.py": "registers the brain: creates .mdpipeline/",

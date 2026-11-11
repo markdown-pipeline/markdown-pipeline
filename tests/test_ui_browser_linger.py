@@ -32,6 +32,7 @@ def one(brain, add_pipeline, make_source):
     return brain
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_home_shows_the_line_with_both_commands_and_hide_removes_it_for_good(page, one):
     with running_ui(one) as ui:
         open_app(page, ui)
@@ -47,6 +48,7 @@ def test_home_shows_the_line_with_both_commands_and_hide_removes_it_for_good(pag
         expect(page.locator("#bg-linger-home")).to_have_count(0)
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_settings_keeps_the_line_after_it_is_hidden_on_home(page, one):
     with running_ui(one) as ui:
         open_app(page, ui)
@@ -69,6 +71,7 @@ def test_linger_on_gets_no_line_on_home(page, one, monkeypatch):
         expect(page.locator("#bg-linger-home")).to_have_count(0)
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_the_first_run_ready_step_shows_the_line(page, brain, notes, tmp_path):
     from test_ui_browser_firstrun_flow import folder_to_target
 

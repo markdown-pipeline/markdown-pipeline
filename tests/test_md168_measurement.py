@@ -172,6 +172,7 @@ def run_background(how="manual", monkeypatch=None):
     background.run(max_ticks=1, sleep=lambda s: None, how=how)
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 @pytest.mark.parametrize("display,expected", [(None, "no"), (":0", "yes")])
 def test_desktop_session_follows_the_display(sharing, monkeypatch, display, expected):
     monkeypatch.delenv("DISPLAY", raising=False)
@@ -183,6 +184,7 @@ def test_desktop_session_follows_the_display(sharing, monkeypatch, display, expe
     assert own(queued("background_started")[0])["desktop_session"] == expected
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 @pytest.mark.parametrize("linger,expected", [("no", "no"), ("yes", "yes")])
 def test_linger_enabled_is_read_from_the_system(sharing, headless, monkeypatch, linger, expected):
     monkeypatch.setattr(autostart, "_run", FakeSystemd(linger=linger))
@@ -263,6 +265,7 @@ def test_the_page_reports_the_notice_through_the_same_once_a_day_rule(brain, sha
     assert [own(e) for e in queued("notice_shown")] == [{"kind": "linger", "surface": "ready"}]
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_the_cli_reports_it_once_a_day_for_schedule_background_on_and_show(sharing, headless, brain, capsys):
     cli.main(["--brain", str(brain.root), "schedule", "background", "on"])
     cli.main(["--brain", str(brain.root), "schedule"])
@@ -333,17 +336,20 @@ def no_display(monkeypatch):
     monkeypatch.setenv("USER", "avi")
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 @pytest.mark.parametrize("kind", ["x11", "wayland", "mir"])
 def test_a_service_without_display_still_sees_the_users_graphical_session(no_display, monkeypatch, kind):
     monkeypatch.setattr(autostart, "_run", FakeLogind([("2", "avi", kind)]))
     assert autostart.desktop_state() == "yes" and autostart.linger_notice() is False
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_an_ssh_session_only_is_no(no_display, monkeypatch):
     monkeypatch.setattr(autostart, "_run", FakeLogind([("5", "avi", "tty")]))
     assert autostart.desktop_state() == "no" and autostart.linger_notice() is True
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_another_users_graphical_session_does_not_count(no_display, monkeypatch):
     monkeypatch.setattr(autostart, "_run", FakeLogind([("3", "bob", "x11"), ("5", "avi", "tty")]))
     assert autostart.desktop_state() == "no"
@@ -354,6 +360,7 @@ def test_no_display_and_no_loginctl_is_unknown_and_the_line_stays_hidden(no_disp
     assert autostart.desktop_state() == "unknown" and autostart.linger_notice() is False
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_a_display_in_the_process_is_yes_without_asking_logind(monkeypatch):
     monkeypatch.setenv("DISPLAY", ":0")
     fake = FakeLogind([])
@@ -361,6 +368,7 @@ def test_a_display_in_the_process_is_yes_without_asking_logind(monkeypatch):
     assert autostart.desktop_state() == "yes" and fake.calls == []
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_the_event_for_a_user_service_on_a_desktop_says_yes(sharing, no_display, monkeypatch):
     monkeypatch.setattr(autostart, "_run", FakeLogind([("2", "avi", "wayland")], linger="no"))
     run_background(how="user_service", monkeypatch=monkeypatch)

@@ -16,7 +16,12 @@ import uuid
 from pathlib import Path
 
 from .boundary import check_write_target
+from . import fsretry
 from .brain import Brain, ensure_config_dir
+
+
+class FileInUse(OSError):
+    """The output file stayed locked by another program (Windows). The old file is intact; the message is for the person (MD-228)."""
 
 
 class WriteRefused(Exception):
@@ -69,7 +74,12 @@ class SafeWriter:
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(tmp, target)
+            try:
+                fsretry.replace(tmp, target)
+            except PermissionError as exc:             # MD-228 (Windows only, MD-229: on Linux/macOS a PermissionError is real and is raised as it was in 0.1.20)
+                if not fsretry.retry_enabled():
+                    raise
+                raise FileInUse(f"{target.name} is open in another program, so it wasn't written. Close it there, and the next sync will try again.") from exc
         except BaseException:
             tmp.unlink(missing_ok=True)
             raise
@@ -77,9 +87,13 @@ class SafeWriter:
     def delete(self, rel: str) -> None:
         target = self._resolve(rel)
         try:
-            target.unlink()
+            fsretry.retry_permission(target.unlink)
         except FileNotFoundError:
             return
+        except PermissionError as exc:                 # MD-228 (Windows only, MD-229)
+            if not fsretry.retry_enabled():
+                raise  # open in another program (Windows): the file stays and is still tracked, so it is retried, never "deleted"
+            raise FileInUse(f"{target.name} is open in another program, so it wasn't removed. Close it there, and the next sync will try again.") from exc
         parent = target.parent
         keep = {self.brain.root, self.brain.raw_dir}              # the output folder itself, and a raw/ that a brain expects
         while parent not in keep and parent.is_relative_to(self.brain.root):

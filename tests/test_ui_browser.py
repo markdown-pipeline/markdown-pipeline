@@ -1,6 +1,7 @@
 """The UI in a real browser (Playwright + Chromium) against the real server and a real brain.
 
 Set MDP_SHOTS=/some/dir to also save screenshots of every screen state."""
+import re
 import os
 import subprocess
 import sys
@@ -108,7 +109,7 @@ def test_home_lists_pipelines_with_folders_target_status_and_syncs_from_the_ui(p
         expect(biz).to_contain_text("2 folders: raw, wiki")
         expect(biz).to_contain_text("raw/{pipeline}/{source}/{relpath}")
         expect(biz).to_contain_text("not synced yet")
-        expect(page.locator("li.prow", has_text="solo")).to_contain_text("/single")
+        expect(page.locator("li.prow", has_text="solo")).to_contain_text(re.compile(r"[/\\]single"))
         biz.get_by_role("button", name="Sync now").click()
         expect(biz).to_contain_text("ok")
         expect(biz).to_contain_text("4 created")

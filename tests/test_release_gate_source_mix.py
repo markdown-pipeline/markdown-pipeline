@@ -69,7 +69,7 @@ def draft(sources, **kw):
 def raw_md(brain, sub=""):
     """The Markdown files the pipelines wrote (MD-133: at the root of the output folder; the app's own folder is not content)."""
     base = brain.root / "raw" / sub if sub else brain.root          # a sub-path is relative to raw/ (explicit raw/ templates); none = the whole output folder
-    return sorted(str(p.relative_to(brain.root)) for p in base.rglob("*.md") if ".mdpipeline" not in p.parts and "wiki" not in p.relative_to(brain.root).parts[:1])
+    return sorted(p.relative_to(brain.root).as_posix() for p in base.rglob("*.md") if ".mdpipeline" not in p.parts and "wiki" not in p.relative_to(brain.root).parts[:1])
 
 
 def content_snapshot(brain):

@@ -304,6 +304,7 @@ def update_ok(monkeypatch):
     return ran
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 def test_update_restarts_the_background_process_through_the_newly_installed_code(update_ok, capsys):
     code, out, _ = run_cli(capsys, "update")
     assert code == 0
@@ -316,6 +317,7 @@ def test_update_never_tells_the_person_to_do_off_then_on(update_ok, capsys):
     assert "off, then on" not in out and "next login" not in out
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 def test_a_failed_update_does_not_touch_the_background_process(monkeypatch, capsys):
     from mdpipeline import install_info, lifecycle
 
@@ -328,6 +330,7 @@ def test_a_failed_update_does_not_touch_the_background_process(monkeypatch, caps
     assert code != 0 and ran == [] and "not updated" in err
 
 
+@pytest.mark.windows_unsupported("on Windows `update` hands the work to a detached PowerShell helper (MD-183), tested in test_windows_update_helper.py; this test is the POSIX run-it-inline path")
 def test_if_the_restart_step_cannot_run_the_update_still_succeeds_and_says_how_to_restart(monkeypatch, update_ok, capsys):
     def boom(argv, **kw):
         raise OSError("no interpreter")

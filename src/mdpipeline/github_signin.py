@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass
 from typing import Callable
 from urllib.parse import urlsplit
 
-from . import github_api
+from . import github_api, fsretry
 from . import vault as vault_mod
 from .target import TargetAuthError, TargetError, TargetUnavailable
 
@@ -100,7 +100,7 @@ def reset_app_settings() -> None:
         return
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data), encoding="utf-8")
-    os.replace(tmp, path)
+    fsretry.publish(tmp, path)
 
 
 def save_app_settings(client_id: str, slug: str) -> None:
@@ -116,7 +116,7 @@ def save_app_settings(client_id: str, slug: str) -> None:
     data["github_app"] = {"client_id": client_id.strip(), "slug": slug.strip()}
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data), encoding="utf-8")
-    os.replace(tmp, path)
+    fsretry.publish(tmp, path)
 
 
 def require_client_id() -> str:

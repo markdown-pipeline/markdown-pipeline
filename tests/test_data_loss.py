@@ -17,6 +17,7 @@ import time
 
 import pytest
 
+import winsupport
 from conftest import tree_snapshot, write
 from mdpipeline.cli import main
 from mdpipeline.config import Pipeline, Source, load_config, save_config
@@ -30,10 +31,17 @@ SRC = os.path.dirname(__file__) + "/../src"
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):
     """Definition of Done 4: no network calls in any test of this suite."""
+    real_connect = socket.socket.connect
+
     def deny(*a, **k):
         raise AssertionError("network access attempted")
 
-    monkeypatch.setattr(socket.socket, "connect", deny)
+    def connect(self, address, *a, **k):
+        if isinstance(address, tuple) and address and address[0] in ("127.0.0.1", "::1"):        # asyncio on Windows opens a loopback socket pair for its own event loop
+            return real_connect(self, address, *a, **k)
+        return deny()
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
     monkeypatch.setattr(socket, "getaddrinfo", deny)
 
 
@@ -244,7 +252,7 @@ def test_s7_sigkill_mid_run_leaves_no_partial_files_and_rerun_converges(world):
                 os.kill(os.getpid(), 9)
         sync_pipeline(find_brain({str(world['root'])!r}), "biz", after_write=hook)
     """)
-    assert subprocess.run([sys.executable, "-c", script]).returncode == -signal.SIGKILL
+    assert subprocess.run([sys.executable, "-c", script]).returncode == winsupport.HARD_KILL_EXIT
     leftovers = [p for p in world["root"].rglob("*") if p.suffix == ".tmp"]
     assert leftovers == []
     for f in (world["root"] / "raw/biz").rglob("*.md"):

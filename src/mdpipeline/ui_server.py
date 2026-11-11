@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 from . import uiactivity, uieditor, uiapi, uijira, uitargets, uiview, usage_hooks
 from .brain import Brain
 from .locking import BusyError
+from .schedulestore import ScheduleSaveError
 from .target import TargetError
 from .vault import VaultError, readiness as vault_readiness
 from .service import NotFound, ValidationFailed
@@ -123,6 +124,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(409, {"error": str(exc), "category": exc.category, "needs_passphrase": bool(getattr(exc, "needs_passphrase", False))})
         except VaultError as exc:                 # a locked vault (passphrase needed) or a refused removal: plain words, never a secret
             self._json(409, {"error": str(exc), "needs_passphrase": bool(getattr(exc, "needs_passphrase", False))})
+        except ScheduleSaveError as exc:          # MD-226: the schedule file was busy; plain words and a next step, the old schedule is kept
+            self._json(409, {"error": str(exc)})
         except Exception as exc:  # never leak a stack trace to the browser
             self._json(500, {"error": f"{type(exc).__name__}: {exc}"})
 

@@ -8,6 +8,7 @@ from mdpipeline.config import Pipeline, load_config
 from mdpipeline.engine import sync_pipeline
 from mdpipeline.log import ActivityLog
 from uihelper import running_ui
+import winsupport
 
 
 @pytest.fixture(autouse=True)
@@ -94,7 +95,7 @@ def test_the_first_ui_sync_turns_the_background_on_and_returns_the_plain_words_o
 
 def test_sync_all_also_announces_once(one):
     with running_ui(one) as ui:
-        assert "starts at login" in ui.post("/api/sync-all", {})[1]["announcement"]
+        assert winsupport.STARTS_AT_LOGIN in ui.post("/api/sync-all", {})[1]["announcement"]
 
 
 def test_turning_the_background_off_and_on_from_settings(one):
@@ -135,7 +136,7 @@ def test_the_announcement_survives_a_page_reload_until_it_is_acknowledged(one):
     with running_ui(one) as ui:
         ui.post("/api/pipelines/p/sync", {})
         bg = ui.get("/api/state")[1]["background"]
-        assert bg["announce_pending"] is True and "starts at login" in bg["announcement"]
+        assert bg["announce_pending"] is True and winsupport.STARTS_AT_LOGIN in bg["announcement"]
         again = ui.post("/api/pipelines/p/sync", {})[1]
         assert "announcement" not in again                               # the response says it once; the state keeps it
         assert ui.get("/api/state")[1]["background"]["announce_pending"] is True

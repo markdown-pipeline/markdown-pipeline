@@ -32,7 +32,7 @@ from shutil import which
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from . import winacl
+from . import winacl, fsretry
 from .target import TargetError
 
 SERVICE = "mdpipeline-vault"
@@ -297,7 +297,7 @@ class Vault:
             json.dump(header, handle)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp, self.path)
+        fsretry.publish(tmp, self.path)
         if winacl.is_windows():
             winacl.restrict_to_current_user(self.path, directory=False)
 

@@ -34,7 +34,7 @@ def test_cli_connect_prints_both_snippets(brain, capsys):
     code = main(["--brain", str(brain.root), "connect"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "Claude Code" in out and "Codex" in out and out.count(str(brain.root)) >= 3
+    assert "Claude Code" in out and "Codex" in out and out.count(str(brain.root)) + out.count(str(brain.root).replace("\\", "\\\\")) >= 3     # the Codex snippet is TOML/JSON: backslashes are doubled
     assert "claude mcp add" in out and "[mcp_servers.mdpipeline]" in out
 
 

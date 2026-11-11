@@ -33,6 +33,7 @@ def test_the_line_says_what_happens_without_linger_and_gives_both_commands():
     assert "loginctl enable-linger $USER" in line and "sudo loginctl enable-linger $USER" in line and "access denied" in line
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_the_notice_is_for_a_box_with_no_desktop_session_where_linger_is_off(headless):
     assert autostart.linger_notice() is True
 
@@ -49,6 +50,7 @@ def test_no_notice_when_linger_is_on(app_data, monkeypatch):
     assert autostart.linger_notice() is False
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_the_view_carries_the_notice_and_the_text_only_when_background_is_on(headless):
     from mdpipeline.uiapi import background_view
 
@@ -58,6 +60,7 @@ def test_the_view_carries_the_notice_and_the_text_only_when_background_is_on(hea
     assert background_view()["linger_notice"] is False
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_hiding_the_notice_on_home_is_remembered_until_linger_is_on(headless):
     from mdpipeline.uiapi import background_view
 
@@ -65,6 +68,7 @@ def test_hiding_the_notice_on_home_is_remembered_until_linger_is_on(headless):
     assert background_view()["linger_notice"] is False and background_view()["linger_hint"] is True      # Settings keeps the line
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_the_hide_button_has_an_endpoint(headless, brain):
     from uihelper import running_ui
 
@@ -83,11 +87,13 @@ def test_the_app_never_runs_enable_linger_even_with_the_notice(headless, tmp_pat
 
 
 # --- AC2: the CLI output ----------------------------------------------------------------------------------------------
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_schedule_background_on_prints_the_line(headless, brain, capsys):
     assert cli.main(["--brain", str(brain.root), "schedule", "background", "on"]) == 0
     assert autostart.LINGER_LINE_PLAIN in capsys.readouterr().out
 
 
+@pytest.mark.windows_unsupported("systemd linger and the desktop-session check exist only on Linux; Windows background sync is MD-181")
 def test_schedule_show_prints_the_line_when_background_is_on(headless, brain, capsys):
     turn_on()
     assert cli.main(["--brain", str(brain.root), "schedule"]) == 0

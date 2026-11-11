@@ -24,7 +24,7 @@ def tree(tmp_path, monkeypatch):
         (home / d).mkdir(parents=True)
     (home / "projects" / CANARY_FILE).write_text("numbers")
     (home / "notes.txt").write_text("x")
-    monkeypatch.setenv("HOME", str(home))
+    winsupport.set_home(monkeypatch, str(home))
     monkeypatch.setattr(folderbrowser, "wsl_drives", lambda: [])
     return home
 

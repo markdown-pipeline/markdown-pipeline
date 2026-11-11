@@ -11,6 +11,7 @@ import pytest
 from mdpipeline import autostart, background, cli, scheduler, usage
 from mdpipeline.schedulestore import SchedulerStore
 from mdpipeline.usage import UsageStore
+import winsupport
 
 
 class FakeSystemd:
@@ -100,7 +101,7 @@ def test_schedule_background_off_removes_the_login_item_and_the_service(app_data
 
 @pytest.mark.windows_unsupported("systemd and linger exist only on Linux; Windows has no such text (see test_windows_background)")
 def test_uninstall_leaves_nothing_enabled_on_a_real_service_file(systemd, app_data, tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    winsupport.set_home(monkeypatch, str(tmp_path))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     autostart.enable()
     autostart.enable_user_service()

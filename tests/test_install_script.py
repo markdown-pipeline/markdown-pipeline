@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.windows_unsupported("scripts/install.sh is a POSIX shell script (Windows users are pointed to WSL); the tests run it with sh and symlinked tools")
+
 SCRIPT = Path(__file__).parent.parent / "scripts" / "install.sh"
 
 

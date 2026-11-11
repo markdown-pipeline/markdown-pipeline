@@ -9,6 +9,7 @@ playwright_sync = pytest.importorskip("playwright.sync_api")
 from playwright.sync_api import expect  # noqa: E402
 
 from mdpipeline.config import load_config  # noqa: E402
+import winsupport  # noqa: E402
 from test_jira_sync import EMAIL, TOKEN  # noqa: E402
 from test_ui_browser import browser, open_app, page, shot  # noqa: E402,F401
 from test_ui_browser_firstrun import jira, notes, quiet  # noqa: E402,F401
@@ -66,7 +67,7 @@ def test_where_files_go_has_two_cards_nothing_chosen_and_no_write_or_continue_bu
         expect(page.locator("input[type=radio]:checked")).to_have_count(0)
         expect(page.get_by_role("button", name=WRITE)).to_have_count(0)
         expect(page.get_by_role("button", name="Continue", exact=True)).to_have_count(0)
-        expect(page.get_by_role("textbox", name="Output folder")).to_have_value(re.compile(r"^~/markdown-pipeline/team-wiki$"))
+        expect(page.get_by_role("textbox", name="Output folder")).to_have_value(re.compile("^" + re.escape(winsupport.default_folder("team-wiki")) + "$"))
         expect(page.locator("#fr-dest-msg")).to_contain_text("New folder")
         assert load_config(brain).pipelines == []
         shot(page, "firstrun-flow-where-files-go")
@@ -161,7 +162,7 @@ def test_jira_to_folder_projects_then_destination_then_review_then_files(page, b
         expect(page.get_by_role("radio", name="90 days")).to_be_checked()
         page.get_by_role("button", name="Continue with 6 issues").click()
         expect(page.get_by_role("heading", name="Where should your files go?")).to_be_visible()
-        expect(page.get_by_role("textbox", name="Output folder")).to_have_value("~/markdown-pipeline/acme-jira")
+        expect(page.get_by_role("textbox", name="Output folder")).to_have_value(winsupport.default_folder("acme-jira"))
         page.get_by_role("textbox", name="Output folder").fill(str(dest))
         page.get_by_role("button", name="Use this folder").click()
         expect(page.locator("#fr-summary")).to_contain_text("6 Jira issues → 6 Markdown files")

@@ -70,6 +70,8 @@ def app_data(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.setenv("APPDATA", str(home / "AppData"))
+    monkeypatch.setenv("USERPROFILE", str(home))                 # MD-184: Path.home() on Windows reads USERPROFILE, not HOME
+    monkeypatch.setenv("LOCALAPPDATA", str(home / "AppData" / "Local"))
     monkeypatch.setenv("MDPIPELINE_NO_BACKGROUND_START", "1")
     monkeypatch.setenv("MDPIPELINE_NO_UPDATE_CHECK", "1")      # MD-222: no test asks PyPI; tests/test_md222_update_check.py turns the check on with a fake
     from mdpipeline import autostart

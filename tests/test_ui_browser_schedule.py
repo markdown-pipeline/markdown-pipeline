@@ -10,6 +10,7 @@ from mdpipeline.engine import sync_pipeline  # noqa: E402
 from mdpipeline.log import ActivityLog  # noqa: E402
 from test_ui_browser import browser, open_app, page, shot  # noqa: E402,F401
 from uihelper import running_ui  # noqa: E402
+import winsupport
 
 
 @pytest.fixture(autouse=True)
@@ -80,7 +81,7 @@ def test_the_first_sync_says_in_plain_words_that_it_keeps_running_and_it_can_be_
         page.get_by_role("button", name="Sync now").first.click()
         banner = page.locator("#bg-announce")
         expect(banner).to_be_visible()
-        assert "keeps running when this window is closed" in banner.inner_text() and "starts at login" in banner.inner_text()
+        assert "keeps running when this window is closed" in banner.inner_text() and winsupport.STARTS_AT_LOGIN in banner.inner_text()
         shot(page, "schedule-announcement")
         banner.get_by_role("button", name="Turn off").click()
         expect(banner).to_have_count(0)
@@ -224,7 +225,7 @@ def test_settings_has_a_background_sync_switch(page, one):
         open_app(page, ui)
         page.get_by_role("button", name="Settings").click()
         card = page.locator("#bg-settings")
-        expect(card).to_contain_text("Keep syncing when this window is closed (starts when you log in to your desktop)")
+        expect(card).to_contain_text("Keep syncing when this window is closed " + winsupport.SETTINGS_STARTS)
         expect(card.get_by_role("button", name="On")).to_have_attribute("aria-pressed", "true")
         card.get_by_role("button", name="Off").click()
         expect(card.get_by_role("button", name="Off")).to_have_attribute("aria-pressed", "true")

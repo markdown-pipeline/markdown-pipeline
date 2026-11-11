@@ -212,6 +212,7 @@ def test_a_terminal_stdin_with_a_hidden_stderr_never_asks_and_gives_the_hint(cap
     assert code == 0 and UsageStore().sharing is False and "mdpipeline usage on" in err
 
 
+@pytest.mark.windows_unsupported("needs a POSIX pseudo-terminal (pty); Windows has none")
 def test_a_real_command_with_a_terminal_stdin_and_a_piped_stderr_answers_within_seconds(tmp_path):
     import os
     import pty

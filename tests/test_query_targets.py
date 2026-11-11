@@ -136,7 +136,7 @@ def test_a_conflict_in_another_target_can_be_opened_and_copied_with_the_right_pa
     assert sync_pipeline(brain, "there", trigger="cli").result == "conflicts"
     [card] = [c for c in activity_view(brain)["needs_you"] if c["kind"] == "conflicts"]
     item = card["items"][0]
-    assert item["abs_path"] == str(target) and item["open_path"] == "@there/" + str(target.relative_to(other))
+    assert item["abs_path"] == str(target) and item["open_path"] == "@there/" + target.relative_to(other).as_posix()
     opened = []
     with running_ui(brain, opener=opened.append) as ui:
         status, res = ui.post("/api/open", {"path": item["open_path"]})

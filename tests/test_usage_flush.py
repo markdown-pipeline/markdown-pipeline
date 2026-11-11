@@ -1,6 +1,7 @@
 """MD-116 (FR-S2 AC1, FR-S1 AC4): events are sent in the background; the caller (sync, UI, CLI, MCP) never waits for the network."""
 from __future__ import annotations
 
+import sys
 import threading
 import time
 
@@ -65,8 +66,12 @@ def test_emit_returns_at_once_even_when_the_network_is_stuck(sharing, monkeypatc
 def test_several_events_close_together_go_out_as_one_batch(sharing, monkeypatch):
     transport = Recorder()
     monkeypatch.setattr(usage, "get_transport", lambda: transport)
+    monkeypatch.setattr(usage, "FLUSH_DELAY", 3600.0)       # the burst must not depend on how fast the machine emits (a slow Windows VM took >3 s for 3 events)
     for _ in range(5):
         usage.emit("app_opened")
+    assert usage.schedule_flush() is False                  # one send is already pending for the whole burst
+    usage.cancel_pending_flush()
+    usage._run_flush()                                      # the moment the delay ends
     assert usage.wait_for_flush(5)
     assert [len(b) for b in transport.batches] == [5]
 
@@ -124,7 +129,7 @@ def test_a_cli_run_with_pending_events_starts_one_detached_flush_and_does_not_wa
     (args, kwargs), = popen.calls
     command = args[0]
     assert command[1:] == ["-m", "mdpipeline", "usage", "flush"]
-    assert kwargs["start_new_session"] is True and kwargs["stdin"] is usage.subprocess.DEVNULL
+    assert (kwargs.get("start_new_session") is True) == (sys.platform != "win32") and ("creationflags" in kwargs) == (sys.platform == "win32") and kwargs["stdin"] is usage.subprocess.DEVNULL
     assert kwargs["stdout"] is usage.subprocess.DEVNULL and kwargs["stderr"] is usage.subprocess.DEVNULL
 
 

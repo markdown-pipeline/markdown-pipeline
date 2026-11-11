@@ -53,7 +53,7 @@ def issue_requests(fake, since=0):
 
 
 def raw_files(brain):
-    return sorted(str(p.relative_to(brain.root)) for p in (brain.root / "raw").rglob("*.md"))
+    return sorted(p.relative_to(brain.root).as_posix() for p in (brain.root / "raw").rglob("*.md"))
 
 
 # ---- MD-49: names and folders -------------------------------------------------------------------

@@ -11,7 +11,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 
-from . import usage
+from . import usage, fsretry
 from .agents import READ_TOOLS
 from .brain import Brain
 from .log import ActivityLog
@@ -69,7 +69,7 @@ def _save(data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f".{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data), encoding="utf-8")
-    os.replace(tmp, path)
+    fsretry.publish(tmp, path)
 
 
 def handled() -> dict[str, str]:

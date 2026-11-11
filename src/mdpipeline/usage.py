@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import __version__, filelock
+from . import __version__, filelock, fsretry
 from .autostart import detached_kwargs
 from .usage_events import sanitize
 from .vault import data_dir
@@ -136,7 +136,7 @@ class UsageStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
-        os.replace(tmp, self._path)
+        fsretry.publish(tmp, self._path)
 
     @contextlib.contextmanager
     def _locked(self):

@@ -17,6 +17,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import fsretry
 from .brain import Brain
 from .snippets import SERVER_NAME, _args
 from .vault import data_dir
@@ -130,7 +131,7 @@ def _save(data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f".{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
+    fsretry.publish(tmp, path)
 
 
 BATCH_SUFFIXES = (".cmd", ".bat")
@@ -211,7 +212,7 @@ def connect(brain: Brain, agent: str, folder: str, agents_md: str | None = None)
     text = agents_text(brain)
     target = Path(plan["file"])
     if plan["verb"] == "replaced" and target.exists():
-        os.replace(target, plan["backup"])
+        fsretry.replace(target, plan["backup"])
     target.write_text(text, encoding="utf-8")
     shown = {"replaced": f"replaced {plan['file']} (yours is saved as {Path(plan['backup'] or '').name})"}.get(plan["verb"], f"{plan['verb']} {plan['file']}")
     changes = [shlex.join(_add_command(agent, brain)), shown]
@@ -240,7 +241,7 @@ def disconnect(brain: Brain, agent: str) -> dict:
     if unchanged:
         backup = Path(record["backup"]) if record.get("backup") else None
         if backup and backup.exists():
-            os.replace(backup, target)
+            fsretry.replace(backup, target)
             changes.append(f"restored {target}")
         else:
             target.unlink()

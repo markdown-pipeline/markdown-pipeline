@@ -24,6 +24,7 @@ def rel():
     sys.modules["release_script_md214"] = module
     spec.loader.exec_module(module)
     module.check_server_json = lambda version, path=None: None        # the repo's real server.json carries the current version; these tests use a made-up one
+    module.check_release_files = lambda version: None                 # MD-235: same for the file-agreement check (tests/test_md235_version.py covers it)
     return module
 
 

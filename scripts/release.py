@@ -68,6 +68,35 @@ def lock_problem(pyproject_text: str, lock_text: str) -> str | None:
             "run `uv lock` and commit uv.lock together with the version bump")
 
 
+def consistency_problems(version: str, pyproject_text: str, lock_text: str, server_text: str) -> list[str]:
+    """MD-235: every file that carries the version must carry the release (tag) version. All the problems, so one run shows them all."""
+    import tomllib
+
+    problems: list[str] = []
+    project = tomllib.loads(pyproject_text)["project"]
+    if project["version"] != version:
+        problems.append(f"pyproject.toml says {project['version']} but the release is {version}: raise it with the release")
+    mine = [p for p in tomllib.loads(lock_text).get("package", []) if p.get("name") == project["name"]]
+    locked = mine[0].get("version") if mine else None
+    if locked != version:
+        problems.append(f"uv.lock says {locked or 'nothing'} for {project['name']} but the release is {version}: run `uv lock` and commit it")
+    problem = server_json_problem(server_text, version)
+    if problem:
+        problems.append(problem)
+    return problems
+
+
+def check_release_files(version: str) -> None:
+    """Refuse (``ReleaseError``) unless pyproject.toml, uv.lock and both versions in server.json equal ``version`` (the tag)."""
+    try:
+        texts = [(APP / "pyproject.toml").read_text(encoding="utf-8"), (APP / "uv.lock").read_text(encoding="utf-8"), SERVER_JSON.read_text(encoding="utf-8")]
+    except OSError as exc:
+        raise ReleaseError(f"cannot read a release file: {exc.strerror or exc}") from exc
+    problems = consistency_problems(version, *texts)
+    if problems:
+        raise ReleaseError(f"the release files do not agree with the tag v{version}:\n  - " + "\n  - ".join(problems))
+
+
 def tag_for(version: str) -> str:
     return f"v{version}"
 
@@ -291,6 +320,8 @@ def run(argv: list[str] | None = None, runner: Callable[[list[str]], tuple[int, 
     parser.add_argument("--server-json", default=str(SERVER_JSON), help="attached to the release; default: server.json in the app folder")
     args = parser.parse_args(argv)
     try:
+        if args.check_ci or args.create_draft:
+            check_release_files(args.version or version_from_pyproject((APP / "pyproject.toml").read_text(encoding="utf-8")))     # MD-235: before git or GitHub is asked anything
         stale = lock_problem((APP / "pyproject.toml").read_text(encoding="utf-8"), (APP / "uv.lock").read_text(encoding="utf-8"))
         if stale:
             raise ReleaseError(stale)

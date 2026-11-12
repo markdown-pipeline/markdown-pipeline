@@ -61,7 +61,7 @@ def test_what_we_send_names_every_event_that_is_emitted_and_no_event_that_does_n
     for name in emitted - {"consent_outcome"}:
         assert name in page, f"{name} is on the allowlist but not explained"
     unknown = {n for n in named if re.fullmatch(r"[a-z]+_[a-z_]+", n)} - events
-    assert unknown <= {"reset_id", "is_internal"}, unknown      # is_internal is a field on every event (MD-154), not an event
+    assert unknown <= {"reset_id", "is_internal", "distinct_id"}, unknown      # fields, not events: is_internal on every event (MD-154), distinct_id of the consent counter (MD-232)
 
 
 def test_what_we_send_lists_only_events_that_are_really_sent():

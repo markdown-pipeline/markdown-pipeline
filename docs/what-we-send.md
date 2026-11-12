@@ -1,8 +1,8 @@
 # What we send
 
-Markdown Pipeline can send anonymous usage data so we can see where setup is hard. **It is off until you choose.** If you choose "Don't share",
-or never answer, nothing is sent. You can change your mind any time in **Settings → Privacy & usage**, or with `mdpipeline usage on` and
-`mdpipeline usage off`.
+Markdown Pipeline can send anonymous usage data so we can see where setup is hard. **It is off until you choose.**
+
+When you first answer the usage question, the app sends **one anonymous count of your answer**: "share" or "don't share", plus a yes/no that is "no" for you (it marks our own test computers). Nothing else (details below). If you choose "Don't share", that count is the only thing ever sent. If you never answer, nothing is sent. You can change your mind any time in **Settings → Privacy & usage**, or with `mdpipeline usage on` and `mdpipeline usage off`. Changing your mind later sends nothing new.
 
 Your files, and what is in them, never leave your computer through this. Markdown Pipeline only reads your sources (it never changes them) and
 writes Markdown files to a folder on your computer, or to a GitHub repo you choose. The folder browser (the **Browse** button) lists only folder names on your computer, to your
@@ -13,18 +13,37 @@ screen; nothing it shows is sent anywhere.
 Titles, file or folder names, paths, search or JQL text, project keys, URLs, site names, repository names, email addresses (except the one you
 type yourself in a source request, below), tokens and error messages. There is no free-text field on any automatic event.
 
+## The one count of your answer (sent whichever you choose)
+
+We can only see people who share. Without knowing how many said no, we would misread our own numbers. So the first time you answer, the app sends one request:
+
+```json
+{"event": "consent_outcome", "distinct_id": "anonymous-counter", "properties": {"outcome": "decline", "is_internal": false, "$process_person_profile": false, "$geoip_disable": true}}
+```
+
+- `outcome` is `share` or `decline`.
+- `is_internal` is `false` for you. It is `true` only on the developers' own computers, so our testing isn't counted. It carries no ID.
+- That is all it says.
+- `distinct_id` is the same fixed word for everyone, not your install ID, so this count can't be tied to you or to any other event.
+- `$geoip_disable` tells PostHog not to work out a country or city from your address for this request.
+- Like everything else, it shows in `mdpipeline usage log` and in Settings → Privacy & usage, labelled "one-time count, no install ID".
+- It is sent **once per install**, when you first answer (on the card, or with your first `mdpipeline usage on` or `off`). Changing your mind later sends nothing.
+- **If you never answer, it is not sent.** If you want no request at all, skip the card.
+- Like any web request, it reaches PostHog with your IP address. Our PostHog project is set to discard IP addresses, so the address is not stored.
+- Installs from before version 0.1.24 never send it, whether or not they answered. Their choice was made under the old text.
+
 ## Automatic events (only if you chose "Share usage")
 
 Each event is a name plus a few fixed choices, counts or durations. Counts are grouped (for example "1-10", "11-100"). Every event also carries a
 random install ID (you can replace it any time with `mdpipeline usage reset-id`), the app version, and a random number that changes each time
-you open the app. We do not build a profile of a person.
+you open the app. We do not build a profile of a person. Like any web request, each one reaches PostHog with your IP address. Our PostHog project discards it, and no location is worked out from it. Versions before 0.1.24 didn't ask for this, so PostHog worked out an approximate location (country and city) for their events. Update to stop it.
 
 | When | Event | What it carries |
 |---|---|---|
 | You open the app | `app_opened` | whether it is the first time |
 | You open a new version | `app_updated` | the previous version and how you installed; if the install script downloaded the update, also which release file it was (the version and the file name of our wheel) |
 | You install | `install_completed` | your operating system and how you installed: with the install script, with uv or uvx, with pipx, with pip, from the MCP Registry, or from the source; if the install script downloaded the app, also which release file it was (the version and the file name of our wheel) |
-| You answer the usage question | `consent_decided` | that you chose "Share" |
+| You answer the usage question and choose Share | `consent_decided` | that you chose "Share" |
 | You move through the first run | `onboarding_step_viewed`, `onboarding_step_completed`, `session_ended_before_first_sync`, `secret_store_used` | which step, and how long it took; at the where-files-go step, whether you chose a folder or GitHub and whether you changed the suggested folder (yes or no, never the path); whether your secrets are kept by the system keychain or, when there is none, in a file only your user can read (nothing you typed) |
 | Background sync starts | `background_started` | how it was started: at login, by the system service, by the app, or by hand; whether this computer has a desktop session (yes, no, or unknown); and whether Linux keeps your background sync running after you log out ("linger" is on, off, or unknown). The app only reads that setting and never changes it. Nothing else |
 | Background sync is restored | `background_self_healed` | that something had to be put back: the login item that starts background sync was re-created, or the background process was found stopped and started again; and whether a command, the app or your agent's MCP session did it. No paths, no names |

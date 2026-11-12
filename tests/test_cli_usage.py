@@ -107,18 +107,9 @@ def test_reset_id_gives_a_new_random_install_id(capsys):
     assert code == 0 and new != old and new in out
 
 
-def test_the_consent_counter_switch_is_off_by_default_and_can_be_turned_on(capsys):
-    assert UsageStore().counter_enabled is False
-    run(capsys, "usage", "counter", "on")
-    assert UsageStore().counter_enabled is True
-    run(capsys, "usage", "counter", "off")
-    assert UsageStore().counter_enabled is False
-
-
-def test_deciding_on_the_command_line_is_counted_when_the_counter_is_on(capsys, monkeypatch):
+def test_deciding_on_the_command_line_is_counted(capsys, monkeypatch):
     transport = Recorder()
     monkeypatch.setattr(usage, "get_transport", lambda: transport)
-    UsageStore().set_counter_enabled(True)
     run(capsys, "usage", "off")
     assert [e["properties"]["outcome"] for e in transport.events] == ["decline"]
 
@@ -154,13 +145,12 @@ def test_the_question_goes_to_stderr_so_stdout_stays_clean(capsys, monkeypatch):
     assert "usage" not in out.lower() and "share" in err.lower()
 
 
-def test_the_first_answer_is_counted_when_the_counter_is_on(capsys, monkeypatch):
+def test_skipping_the_question_sends_no_count(capsys, monkeypatch):
     transport = Recorder()
     monkeypatch.setattr(usage, "get_transport", lambda: transport)
-    UsageStore().set_counter_enabled(True)
     interactive(monkeypatch, "")
     run(capsys, *CHEAP)
-    assert [e["properties"]["outcome"] for e in transport.events] == ["no_answer"]
+    assert transport.events == []                                                  # "no answer" is never sent (MD-232 D3)
 
 
 # --- non-interactive runs --------------------------------------------------------------------------------------------
@@ -177,7 +167,6 @@ def test_a_non_interactive_run_defaults_to_not_sharing_and_prints_how_to_opt_in_
 def test_a_non_interactive_run_is_not_counted_as_a_decision(capsys, monkeypatch):
     transport = Recorder()
     monkeypatch.setattr(usage, "get_transport", lambda: transport)
-    UsageStore().set_counter_enabled(True)
     monkeypatch.setattr(cli, "interactive", lambda: False)
     run(capsys, *CHEAP)
     assert transport.events == []                    # nobody saw a card: the rate is over people who saw it

@@ -283,7 +283,8 @@ def usage_summary() -> dict:
     from .usage import UsageStore
 
     store = UsageStore()
-    return {"consent": store.consent, "sharing": store.sharing}
+    return {"consent": store.consent, "sharing": store.sharing, "counter_eligible": store.counter_eligible,
+            "counter_card_line": store.view()["counter_card_line"]}
 
 
 def usage_view() -> dict:

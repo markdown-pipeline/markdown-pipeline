@@ -27,9 +27,11 @@ def test_a_new_install_has_no_answer_and_shows_the_lists_and_an_empty_log(brain)
 
 def test_the_home_state_carries_the_consent_so_the_card_knows_whether_to_show(brain):
     with running_ui(brain) as ui:
-        assert ui.get("/api/state")[1]["usage"] == {"consent": "unanswered", "sharing": False}
+        first = ui.get("/api/state")[1]["usage"]
+        assert first["consent"] == "unanswered" and first["sharing"] is False and first["counter_eligible"] is True
         ui.post("/api/usage/consent", {"choice": "decline"})
-        assert ui.get("/api/state")[1]["usage"] == {"consent": "decline", "sharing": False}
+        second = ui.get("/api/state")[1]["usage"]
+        assert second["consent"] == "decline" and second["sharing"] is False
 
 
 @pytest.mark.parametrize("choice,consent,sharing", [("share", "share", True), ("decline", "decline", False), ("no_answer", "unanswered", False)])
@@ -44,7 +46,6 @@ def test_choosing_is_stored_and_effective_at_once(brain, choice, consent, sharin
 def test_undo_returns_to_not_chosen_without_counting_anything(brain, monkeypatch):
     transport = Recorder()
     monkeypatch.setattr(usage, "get_transport", lambda: transport)
-    UsageStore().set_counter_enabled(True)
     with running_ui(brain) as ui:
         ui.post("/api/usage/consent", {"choice": "share"})
         status, view = ui.post("/api/usage/consent", {"choice": "unanswered"})
@@ -91,14 +92,13 @@ def test_reset_gives_a_new_install_id(brain):
     assert status == 200 and view["install_id"] != old and UsageStore().install_id == view["install_id"]
 
 
-def test_the_first_decision_is_counted_when_the_counter_is_on(brain, monkeypatch):
+def test_the_first_real_decision_is_counted_and_no_answer_is_not(brain, monkeypatch):
     transport = Recorder()
     monkeypatch.setattr(usage, "get_transport", lambda: transport)
-    UsageStore().set_counter_enabled(True)
     with running_ui(brain) as ui:
         ui.post("/api/usage/consent", {"choice": "no_answer"})
         ui.post("/api/usage/consent", {"choice": "share"})
-    assert [e["properties"]["outcome"] for e in transport.events] == ["no_answer"]
+    assert [e["properties"]["outcome"] for e in transport.events] == ["share"]
 
 
 def test_the_view_never_shows_the_counter_switch_or_the_queue(brain):

@@ -30,8 +30,8 @@ def test_every_event_has_a_section_with_one_valid_example_payload(name):
     payload = json.loads(re.search(r"```json\n(.*?)\n```", section, re.S).group(1))
     assert payload["event"] == name and payload["distinct_id"] and payload["uuid"]
     props = payload["properties"]
-    assert props["$process_person_profile"] is False and props["deployment"] == "local" and props["app_version"] and props["session_id"] and props["is_internal"] is False     # the doc's example is a real user's
-    own = {k: v for k, v in props.items() if k not in ("$process_person_profile", "deployment", "app_version", "session_id", "is_internal")}
+    assert props["$process_person_profile"] is False and props["$geoip_disable"] is True and props["deployment"] == "local" and props["app_version"] and props["session_id"] and props["is_internal"] is False     # the doc's example is a real user's
+    own = {k: v for k, v in props.items() if k not in ("$process_person_profile", "$geoip_disable", "deployment", "app_version", "session_id", "is_internal")}
     assert own == EVENTS[name].example and sanitize(name, own, explicit=EVENTS[name].explicit) == own
 
 

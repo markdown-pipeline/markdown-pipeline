@@ -79,7 +79,7 @@ def app_data(tmp_path, monkeypatch):
     monkeypatch.setattr(autostart, "_run", lambda *args: None)       # MD-165: no test reaches the real systemctl/loginctl (None = not available)
     monkeypatch.setenv("MDPIPELINE_INTERNAL", "1")      # MD-154: a test run is ours; a real user's state is tested in test_usage_internal.py
     data.mkdir(parents=True, exist_ok=True)
-    (data / "usage.json").write_text('{"notices": ["cli_ask", "cli_hint"]}', encoding="utf-8")
+    (data / "usage.json").write_text('{"counter_eligible": true, "notices": ["cli_ask", "cli_hint"]}', encoding="utf-8")
     yield type("AppData", (), {"dir": data, "keychain": keychain})
     vault.reset_session()
     vault.set_keychain(None)

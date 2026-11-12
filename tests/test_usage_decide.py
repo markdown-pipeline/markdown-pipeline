@@ -32,45 +32,32 @@ def test_an_unknown_decision_is_rejected():
         UsageStore().decide("maybe")
 
 
-@pytest.mark.parametrize("choice,outcome", [("share", "share"), ("decline", "decline"), ("no_answer", "no_answer")])
-def test_the_first_decision_is_counted_once_when_the_counter_is_on(choice, outcome):
+@pytest.mark.parametrize("choice,outcome", [("share", "share"), ("decline", "decline")])
+def test_the_first_decision_is_counted_once(choice, outcome):
     store = UsageStore()
-    store.set_counter_enabled(True)
     transport = Recorder()
     store.decide(choice, transport)
-    assert [e["properties"]["outcome"] for e in transport.events] == [outcome]
+    assert [e["properties"]["outcome"] for e in transport.events if e["event"] == "consent_outcome"] == [outcome]
 
 
-def test_later_decisions_are_not_counted_so_the_rate_stays_shares_over_all_who_saw_the_card():
+def test_later_decisions_are_not_counted_so_the_rate_stays_shares_over_all_who_answered():
     store = UsageStore()
-    store.set_counter_enabled(True)
     transport = Recorder()
     store.decide("no_answer", transport)
     store.decide("share", transport)
     store.decide("decline", transport)
-    assert len(transport.events) == 1
-
-
-def test_nothing_is_counted_while_the_counter_is_off_and_it_is_retried_once_it_is_switched_on():
-    store = UsageStore()
-    transport = Recorder()
-    store.decide("share", transport)
-    assert transport.events == []                       # off by default: not counted, and not remembered as counted
-    store.set_counter_enabled(True)
-    store.decide("decline", transport)
-    assert len(transport.events) == 1
+    assert [e["properties"]["outcome"] for e in transport.events if e["event"] == "consent_outcome"] == ["share"]
 
 
 def test_a_failed_count_is_not_remembered_so_it_can_be_retried():
     store = UsageStore()
-    store.set_counter_enabled(True)
 
     def boom(batch):
         raise OSError("offline")
 
-    store.decide("share", boom)
+    store.decide("decline", boom)
     transport = Recorder()
-    store.decide("share", transport)
+    store.decide("decline", transport)
     assert len(transport.events) == 1
 
 

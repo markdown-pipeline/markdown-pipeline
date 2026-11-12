@@ -16,49 +16,16 @@ class Recorder:
         self.batches.append(batch)
 
 
-def test_the_consent_counter_is_off_by_default_and_sends_nothing():
-    store = UsageStore()
-    transport = Recorder()
-    assert store.counter_enabled is False
-    assert store.report_consent_outcome("decline", transport) is False
-    assert transport.batches == []
-
-
-@pytest.mark.parametrize("outcome", ["share", "decline", "no_answer"])
-def test_with_the_counter_on_each_outcome_is_sent_without_any_identifier(outcome):
-    store = UsageStore()
-    store.set_counter_enabled(True)
-    transport = Recorder()
-    assert store.report_consent_outcome(outcome, transport) is True
-    (event,) = transport.batches[0]
-    assert event["event"] == "consent_outcome"
-    assert event["properties"] == {"outcome": outcome}
-    assert "install_id" not in event
-    assert "at" not in event
-
-
 def test_an_unknown_consent_outcome_is_rejected():
-    store = UsageStore()
-    store.set_counter_enabled(True)
     with pytest.raises(ValueError):
-        store.report_consent_outcome("maybe", Recorder())
+        UsageStore().report_consent_outcome("maybe", Recorder())
 
 
 def test_the_counter_never_raises_when_offline():
-    store = UsageStore()
-    store.set_counter_enabled(True)
-
     def boom(batch):
         raise OSError("offline")
 
-    assert store.report_consent_outcome("share", boom) is False
-
-
-def test_the_counter_is_not_in_the_live_log_it_is_not_a_per_install_event():
-    store = UsageStore()
-    store.set_counter_enabled(True)
-    store.report_consent_outcome("share", Recorder())
-    assert store.live_log() == []
+    assert UsageStore().report_consent_outcome("share", boom) is False
 
 
 class FakeResponse:
@@ -105,8 +72,8 @@ def test_everything_the_transport_adds_is_disclosed_in_the_always_sent_note():
     posthog_transport("phc_test", opener=opener)([{"event": "e", "properties": {"n": 1}, "install_id": "abc", "chosen": False, "at": "2026-10-08T10:00:00Z"}])
     (item,) = seen["body"]["batch"]
     added = set(item["properties"]) - {"n"}
-    assert added == {"$process_person_profile"}                 # everything else on an event is in the log (the globals are added when it is emitted)
-    assert "process_person_profile" in ALWAYS_SENT and "install ID" in ALWAYS_SENT
+    assert added == {"$process_person_profile", "$geoip_disable"}                 # everything else on an event is in the log (the globals are added when it is emitted)
+    assert "process_person_profile" in ALWAYS_SENT and "geoip_disable" in ALWAYS_SENT and "install ID" in ALWAYS_SENT
     for shown in ("app version", "session ID", "deployment"):
         assert shown in ALWAYS_SENT
 

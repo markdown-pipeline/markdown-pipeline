@@ -3,7 +3,7 @@
   "name": "io.github.markdown-pipeline/mdpipeline",
   "title": "Markdown Pipeline",
   "description": "Your team's Jira as clean Markdown files, kept current for your AI agent. Local and read-only.",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "websiteUrl": "https://markdownpipeline.com/?utm_source=mcp-registry&utm_medium=listing",
   "repository": {
     "url": "https://github.com/markdown-pipeline/markdown-pipeline",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "mdpipeline",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

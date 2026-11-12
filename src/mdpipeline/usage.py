@@ -40,8 +40,19 @@ WHAT_WE_SEND = ("Setup steps you complete", "Sync results: counts, timings and k
 NEVER_SENT = ("Your content or titles", "File or folder names, paths", "Jira site, projects, JQL, queries or filter values",
               "Emails (except one you give us to be told about a new tool), tokens, error text")
 ALWAYS_SENT = ("Every event also carries your random install ID, the time, the app version, a random session ID (new at each launch), "
-               "deployment = local, and $process_person_profile = false (it tells the analytics service not to build a person profile). "
-               "The install ID is the only identifier.")
+               "deployment = local, $process_person_profile = false (it tells the analytics service not to build a person profile) and "
+               "$geoip_disable = true (it tells the analytics service not to work out a country or city). "
+               "The install ID is the only identifier. "
+               "Like any web request, each one reaches PostHog with your IP address. Our PostHog project discards it, and no location is worked out from it.")
+# MD-232: marketing's approved wording (MM-175, v3, founder LR-1111-6). Changing a word is a founder decision.
+COUNTER_CARD_LINE = ("Either answer sends one anonymous count of which button you pressed, once, with no install ID. "
+                     "If you skip this, nothing is sent.")
+OLD_CARD_LINE = "You can skip this. If you don't choose, nothing is shared."       # an install from before 0.1.24 keeps the old promise and the old line
+COUNTER_DRAWER = {"lead": "Sent once, whichever you choose:",
+                  "json": '{"event": "consent_outcome", "outcome": "share" or "decline", "is_internal": false}',
+                  "rest": "with a fixed ID that is the same for everyone. (`is_internal` is true only on our own test computers.) "
+                          "Nothing else, and never again."}
+COUNTER_LOG_LABEL = "one-time count, no install ID"
 SENT_ON_PURPOSE = ("Sent only when you press Send, even with sharing off: a source request (\"Use another tool? Tell us which\") and your "
                    "answers to a one-question prompt. Each is labelled \"goes to the team\". It includes the words you type there and, if you give one, your email.")
 POSTHOG_HOST = "https://us.i.posthog.com"       # PostHog US cloud (project "Markdown Pipeline")
@@ -69,7 +80,7 @@ def posthog_transport(project_key: str, host: str = POSTHOG_HOST, opener=urllib.
         items = []
         for event in batch:
             install_id = event.get("install_id")
-            properties = {**event.get("properties", {}), "$process_person_profile": False}     # the only addition: disclosed in ALWAYS_SENT
+            properties = {**event.get("properties", {}), "$process_person_profile": False, "$geoip_disable": True}     # the only additions: disclosed in ALWAYS_SENT (MD-232 AC11)
             items.append({"event": event["event"], "distinct_id": install_id or COUNTER_DISTINCT_ID, "properties": properties,
                           **({"timestamp": event["at"]} if event.get("at") else {}),
                           **({"uuid": event["id"]} if event.get("id") else {})})          # the analytics host drops a resent duplicate by uuid
@@ -160,6 +171,8 @@ class UsageStore:
         """``with store._update() as data:`` change ``data``; it is saved when the block ends without an error."""
         with self._locked():
             data = self._read()
+            if not self._path.exists():
+                data["counter_eligible"] = True         # MD-232 D1: a store created by 0.1.24+ (an older store never gets this key)
             yield data
             self._write(data)
 
@@ -273,10 +286,11 @@ class UsageStore:
         return True
 
     # -- deciding, notices, view ---------------------------------------------------------------------------------
-    def decide(self, choice: str, transport: Transport | None = None) -> None:
+    def decide(self, choice: str, transport: Transport | None = None) -> bool:
         """The user's answer to the consent card / prompt: ``share``, ``decline`` or ``no_answer`` (carried on without choosing).
 
-        Only an install's FIRST decision is counted (when the counter is on), so the consent rate stays shares / everyone who saw the card.
+        Only an install's FIRST real answer is counted, so the consent rate stays shares / everyone who answered. ``no_answer`` is never counted.
+        Returns whether this call sent the one-time count.
         """
         if choice not in CONSENT_OUTCOMES:
             raise ValueError(f"choice must be one of {CONSENT_OUTCOMES}")
@@ -286,10 +300,12 @@ class UsageStore:
             emit("consent_decided", choice="share")        # only a share can be an event: a decline sends nothing
             report_install_once()                          # MD-117: the install funnel's first event, at first launch after consent
         if self._read().get("outcome_counted"):
-            return
+            return False
         if self.report_consent_outcome(choice, transport):
             with self._update() as data:
                 data["outcome_counted"] = True
+            return True
+        return False
 
     def notice_seen(self, name: str) -> bool:
         seen = self._read().get("notices")
@@ -305,29 +321,36 @@ class UsageStore:
         """Everything the UI and the CLI show: the choice, what is and is never sent, the install id and the live log (newest first)."""
         return {"consent": self.consent, "sharing": self.sharing, "install_id": self.install_id,
                 "what_we_send": list(WHAT_WE_SEND), "never_sent": list(NEVER_SENT), "sent_on_purpose": SENT_ON_PURPOSE,
-                "always_sent": ALWAYS_SENT,
+                "always_sent": ALWAYS_SENT, "counter_eligible": self.counter_eligible, "counter_log_label": COUNTER_LOG_LABEL,
+                "counter_card_line": COUNTER_CARD_LINE if self.counter_eligible else OLD_CARD_LINE, "counter_drawer": dict(COUNTER_DRAWER),
                 "log": list(reversed(self.live_log())), "log_limit": LOG_LIMIT}
 
-    # -- consent counter (AC8) -----------------------------------------------------------------------------------
+    # -- consent counter (MD-232) --------------------------------------------------------------------------------
     @property
-    def counter_enabled(self) -> bool:
-        """Off by default until the owner's legal read; when on, only an identifier-free outcome count is sent."""
-        return self._read().get("counter_enabled") is True
-
-    def set_counter_enabled(self, enabled: bool) -> None:
-        with self._update() as data:
-            data["counter_enabled"] = bool(enabled)
+    def counter_eligible(self) -> bool:
+        """True only for a usage store created by 0.1.24 or later. A store from an earlier version keeps the old promise: it never sends the count."""
+        if not self._path.exists():
+            return True                 # the store this version is about to create
+        return self._read().get("counter_eligible") is True
 
     def report_consent_outcome(self, outcome: str, transport: Transport | None) -> bool:
-        """Count one share / decline / no_answer decision. No install id, no timestamp, not in the live log."""
+        """Send the one-time count of an answer (``share`` or ``decline``): no install id, no timestamp, never queued, shown in the live log.
+
+        ``no_answer`` is refused here, not only skipped by ``decide``. Returns whether the count was sent.
+        """
         if outcome not in CONSENT_OUTCOMES:
             raise ValueError(f"outcome must be one of {CONSENT_OUTCOMES}")
-        if not self.counter_enabled or transport is None:
+        if outcome == "no_answer" or transport is None or not self.counter_eligible:
             return False
+        properties = {"outcome": outcome, "is_internal": internal_flag()}
         try:
-            transport([{"event": "consent_outcome", "properties": {"outcome": outcome}}])
+            transport([{"event": "consent_outcome", "properties": dict(properties)}])
         except Exception:               # noqa: BLE001
             return False
+        entry = {"id": str(uuid.uuid4()), "event": "consent_outcome", "properties": properties, "chosen": False, "counter": True,
+                 "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        with self._update() as data:
+            self._append_log(data, [entry])
         return True
 
     def live_log(self) -> list[dict]:

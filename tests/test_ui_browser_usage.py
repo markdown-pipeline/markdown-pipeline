@@ -41,7 +41,7 @@ def test_a_new_install_sees_the_consent_card_with_two_equal_unselected_buttons(p
         assert share.get_attribute("aria-pressed") is None and decline.get_attribute("aria-pressed") is None
         text = card(page).inner_text()
         assert "Never your content, titles, file names, paths, queries or tokens" in text
-        assert "If you don't choose, nothing is shared" in text
+        assert "If you skip this, nothing is sent" in text
         shot(page, "usage-card")
     assert UsageStore().consent == "unanswered"
 
@@ -74,10 +74,9 @@ def test_undo_brings_the_question_back_and_clears_the_choice(page, brain):
     assert UsageStore().consent == "unanswered"
 
 
-def test_carrying_on_without_answering_counts_no_answer_once_and_never_blocks(page, brain, monkeypatch):
+def test_carrying_on_without_answering_sends_nothing_and_never_blocks(page, brain, monkeypatch):
     transport = Recorder()
     monkeypatch.setattr(usage, "get_transport", lambda: transport)
-    UsageStore().set_counter_enabled(True)
     with running_ui(brain) as ui:
         open_app(page, ui)
         page.get_by_role("button", name="Advanced setup").first.click()
@@ -85,7 +84,7 @@ def test_carrying_on_without_answering_counts_no_answer_once_and_never_blocks(pa
         page.get_by_role("button", name="Cancel").click()
         page.get_by_role("button", name="Advanced setup").first.click()
         expect(page.locator("#f-name")).to_be_visible()
-    assert [e["properties"]["outcome"] for e in transport.events] == ["no_answer"]
+    assert transport.events == []
     assert UsageStore().sharing is False
 
 
@@ -193,3 +192,39 @@ def test_settings_names_the_uvx_command_for_a_uvx_or_registry_install(page, brai
         open_app(page, ui)
         open_settings(page)
         expect(page.locator("#usage-settings")).to_contain_text("uvx mdpipeline usage off")
+
+
+# --- MD-232: the one-time count is disclosed before the choice, and shows in the log --------------------------------------------------
+CARD_LINE = "Either answer sends one anonymous count of which button you pressed, once, with no install ID. If you skip this, nothing is sent."
+
+
+def test_the_card_says_before_the_choice_that_either_answer_sends_one_count(page, brain):
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        expect(card(page)).to_contain_text(CARD_LINE)
+        text = card(page).inner_text()
+        assert text.index(CARD_LINE) > text.index("Don't share")                  # next to the buttons, not only in the drawer
+        card(page).get_by_text("See exactly what we send").click()
+        expect(page.locator("#usage-counter")).to_contain_text("Sent once, whichever you choose:")
+        expect(page.locator("#usage-counter")).to_contain_text('{"event": "consent_outcome", "outcome": "share" or "decline", "is_internal": false}')
+        expect(page.locator("#usage-counter")).to_contain_text("Nothing else, and never again.")
+
+
+def test_an_install_from_before_0_1_23_sees_the_old_line_and_no_count_item(page, brain, app_data):
+    (app_data.dir / "usage.json").write_text('{"consent": "unanswered"}', encoding="utf-8")
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        expect(card(page)).to_contain_text("You can skip this. If you don't choose, nothing is shared.")
+        expect(card(page)).not_to_contain_text("one anonymous count")
+        card(page).get_by_text("See exactly what we send").click()
+        expect(page.locator("#usage-counter")).to_have_count(0)
+
+
+def test_settings_shows_the_count_in_the_log_with_its_label(page, brain, monkeypatch):
+    monkeypatch.setattr(usage, "get_transport", lambda: Recorder())
+    with running_ui(brain) as ui:
+        open_app(page, ui)
+        card(page).get_by_role("button", name="Don't share").click()
+        open_settings(page)
+        expect(page.locator("#usage-log")).to_contain_text("consent_outcome")
+        expect(page.locator("#usage-log")).to_contain_text("one-time count, no install ID")

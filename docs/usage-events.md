@@ -30,13 +30,16 @@ are shown exactly as sent in Settings → Privacy & usage and by `mdpipeline usa
 | `session_id` | random, new at each launch, never stored across launches |
 | `is_internal` | `true` only for the developers' own installs and test runs, `false` for everyone else. It is a yes/no and says nothing about you. It is set by running with `MDPIPELINE_INTERNAL=1` (kept afterwards; `MDPIPELINE_INTERNAL=0` takes it off) |
 | `$process_person_profile` | always `false`: tells PostHog not to build a person profile |
+| `$geoip_disable` | always `true`: tells PostHog not to work out a country or city (MD-232) |
 | `timestamp` | when the event happened (an `agent_read` day count is dated to that day) |
 | `uuid` | unique per event |
 
 ## Not events of this list
 
-- **`consent_outcome`** (`share` / `decline` / `no_answer`): the identifier-free consent counter. It has no `distinct_id` of the user, no
-  time and no other property, is **off by default** until the owner's legal read, and counts only an install's first decision.
+- **`consent_outcome`** (`share` / `decline`, never `no_answer`): the one-time count of an install's first answer, sent only by a usage store
+  created by 0.1.24 or later. Its `distinct_id` is the fixed word `anonymous-counter`, not the install ID. Its properties are `outcome` and
+  `is_internal` (plus `$process_person_profile: false` and `$geoip_disable: true`): no install ID, app version, session ID or time. It is shown in the
+  live log, labelled "one-time count, no install ID", and is never queued with the events above.
 - **Filter events** (`filter_*`) ship with the filter UI. **`teammate_added`** ships with team features. Neither is allowed yet.
 
 ## A. Activation path and friction (time to value)
@@ -63,7 +66,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -90,7 +94,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -117,7 +122,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -150,7 +156,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -179,7 +186,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -208,7 +216,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -237,7 +246,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -268,7 +278,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -297,7 +308,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -324,7 +336,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -353,7 +366,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -388,7 +402,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -421,7 +436,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -452,7 +468,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -479,7 +496,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -506,7 +524,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -533,7 +552,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -563,7 +583,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -590,7 +611,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -617,7 +639,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -654,7 +677,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -685,7 +709,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -712,7 +737,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -739,7 +765,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -768,7 +795,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -795,7 +823,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -822,7 +851,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -851,7 +881,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -885,7 +916,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -912,7 +944,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -939,7 +972,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -968,7 +1002,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1011,7 +1046,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1040,7 +1076,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1067,7 +1104,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1094,7 +1132,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1132,7 +1171,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1161,7 +1201,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1185,7 +1226,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1212,7 +1254,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1241,7 +1284,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1274,7 +1318,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1307,7 +1352,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1334,7 +1380,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1363,7 +1410,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1392,7 +1440,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1423,7 +1472,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1452,7 +1502,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1481,7 +1532,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1516,7 +1568,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1547,7 +1600,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```
@@ -1576,7 +1630,8 @@ Example payload as sent:
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
     "is_internal": false,
-    "$process_person_profile": false
+    "$process_person_profile": false,
+    "$geoip_disable": true
   }
 }
 ```

@@ -1712,6 +1712,12 @@ const EXAMPLE_EVENT = '{"event": "first_sync_completed", "properties": {"source_
 const jsonLine = (v) => JSON.stringify(v).replace(/("(?:[^"\\]|\\.)*")|([,:])/g, (m, str, sep) => (str ? str : sep + " "));
 const bullets = (items) => `<ul>${(items || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`;
 const usageLists = (u) => `<div class="ulists"><div><h3>What we send</h3>${bullets(u.what_we_send)}</div><div><h3>Never sent</h3>${bullets(u.never_sent)}</div></div>`;
+// MD-232: the one-time count, first in the drawer (marketing's words come from the server; only an install that sends it shows it).
+const counterDrawer = (u) => {
+  if (!u.counter_eligible || !u.counter_drawer) return "";
+  const d = u.counter_drawer, rest = esc(d.rest).replace(/`([^`]+)`/g, "<code>$1</code>");
+  return `<p class="small" id="usage-counter"><b>${esc(d.lead)}</b> <code>${esc(d.json)}</code>, ${rest}</p>`;
+};
 const usageBtn = (choice, label, cls, pressed) =>
   `<button${cls ? ` class="${cls}"` : ""} data-act="usage-choose" data-choice="${choice}"${pressed === null ? "" : ` aria-pressed="${pressed}"`}>${label}</button>`;
 // The two answers have the same size and style and neither is pre-selected: neither is "the good one".
@@ -1730,9 +1736,9 @@ function renderConsentCard() {
     <h2 id="usage-h">Help improve Markdown Pipeline</h2>
     <p>Share anonymous usage: which steps you complete, errors, counts and timings. Never your content, titles, file names, paths, queries or tokens.</p>
     ${usageButtons()}
-    <p class="muted small">You can skip this. If you don't choose, nothing is shared.</p>
+    <p class="muted small" id="usage-skip">${esc(us.counter_card_line || "You can skip this. If you don't choose, nothing is shared.")}</p>
     <details id="usage-details" ${S.usageUi.drawer ? "open" : ""}><summary>See exactly what we send</summary>
-      <div id="usage-drawer">${u ? usageLists(u) : ""}
+      <div id="usage-drawer">${u ? counterDrawer(u) + usageLists(u) : ""}
         <p class="small">${esc(u ? u.always_sent : "")}</p>
         <p class="small"><b>Example</b> (illustrative):</p><pre class="snip">${esc(EXAMPLE_EVENT)}</pre>
         <p class="small muted">${esc(u ? u.sent_on_purpose : "")}</p>
@@ -1744,7 +1750,7 @@ function renderSettings() {
   if (!u) { $("main").innerHTML = `<div class="bar"><h1 class="grow">Settings</h1></div><p class="muted">Loading…</p>`; return; }
   const status = u.consent === "unanswered" ? "You haven't chosen yet, so nothing is shared."
     : u.sharing ? "Sharing anonymous usage." : "Nothing is sent while sharing is off.";
-  const rows = u.log.map((e) => `<tr><td class="p">${esc(new Date(e.at).toLocaleTimeString())}</td><td class="p">${esc(e.event)}${e.chosen ? ` <span class="dtag" title="You pressed Send">goes to the team</span>` : ""}</td>
+  const rows = u.log.map((e) => `<tr><td class="p">${esc(new Date(e.at).toLocaleTimeString())}</td><td class="p">${esc(e.event)}${e.chosen ? ` <span class="dtag" title="You pressed Send">goes to the team</span>` : ""}${e.counter ? ` <span class="dtag" title="Sent once, when you first answered">${esc(u.counter_log_label)}</span>` : ""}</td>
     <td class="p">${esc(jsonLine(e.properties))}</td></tr>`).join("");
   const empty = u.sharing ? "Nothing sent yet." : "Nothing is sent while sharing is off. This log stays empty.";
   $("main").innerHTML = `<div class="bar"><h1 class="grow">Settings</h1></div>

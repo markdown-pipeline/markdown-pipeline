@@ -151,7 +151,7 @@ def test_ac1_every_event_of_a_whole_journey_passes_the_allowlist_and_no_content_
         assert e["event"] in EVENTS, e
         props = {k: v for k, v in e["properties"].items() if k not in GLOBALS and not k.startswith("$") and k != "distinct_id"}
         assert sanitize(e["event"], props) == props, e            # nothing the allowlist would have dropped
-        assert set(e["properties"]) - GLOBALS - set(EVENTS[e["event"]].props) <= {"$lib", "distinct_id", "install_id", "$process_person_profile"}, e
+        assert set(e["properties"]) - GLOBALS - set(EVENTS[e["event"]].props) <= {"$lib", "distinct_id", "install_id", "$process_person_profile", "$geoip_disable"}, e
     for needle in FORBIDDEN:
         assert needle not in wire.sent_text, f"{needle!r} left the machine"
     local = (usage.data_dir() / "usage.json").read_text(encoding="utf-8")

@@ -384,7 +384,7 @@ def build_parser() -> argparse.ArgumentParser:
     lg.add_argument("--json", action="store_true")
 
     us = sub.add_parser("usage", help="anonymous usage data: see what is sent, turn sharing on or off, reset the install ID",
-                        description="Anonymous usage data helps us see where setup gets hard. It is off until you choose. Nothing is sent while it is off, "
+                        description="Anonymous usage data helps us see where setup gets hard. It is off until you choose. Your first answer sends one anonymous count of that answer (no install ID); nothing else is sent while it is off, "
                                     "and what is sent is listed by `mdpipeline usage log`, exactly as sent.")
     ussub = us.add_subparsers(dest="usage_action", metavar="ACTION")
     ussub.add_parser("status", help="your choice, what is and is never sent, and the install ID (the default)")
@@ -394,8 +394,6 @@ def build_parser() -> argparse.ArgumentParser:
     uslog.add_argument("--json", action="store_true")
     ussub.add_parser("reset-id", help="replace the random install ID with a new one")
     ussub.add_parser("flush", help="send the queued events now (the app does this by itself in the background)")
-    usctr = ussub.add_parser("counter", help="the owner's switch for the identifier-free consent counter (off by default)")
-    usctr.add_argument("state", choices=["on", "off"])
 
     sc = sub.add_parser("schedule", help="how often each pipeline syncs by itself, and the background process that does it",
                         description=schedule_description())
@@ -1574,12 +1572,17 @@ def cmd_log(args) -> int:
     return EXIT_OK
 
 
-def usage_card(method: str | None = None) -> str:
-    """The first-run card text. The command is the one this install can run (``uvx mdpipeline`` for a uvx or Registry install; MD-197)."""
+def usage_card(method: str | None = None, counter: bool = True) -> str:
+    """The first-run card text. The command is the one this install can run (``uvx mdpipeline`` for a uvx or Registry install; MD-197).
+
+    ``counter``: this install sends the one-time count of the answer (MD-232), so the card says so before the choice; an older install keeps the old line."""
+    from .usage import COUNTER_CARD_LINE
+
+    skip = COUNTER_CARD_LINE if counter else "You can skip this: if you don't choose, nothing is shared."
     return ("Help improve Markdown Pipeline.\n"
             "Share anonymous usage: which setup steps you complete, errors, counts and timings.\n"
             "Never your content, titles, file names, paths, queries or tokens.\n"
-            f"You can skip this: if you don't choose, nothing is shared. Change it any time with `{command_prefix(method)} usage on|off`.")
+            f"{skip} Change it any time with `{command_prefix(method)} usage on|off`.")
 
 
 def usage_hint(method: str | None = None) -> str:
@@ -1604,7 +1607,7 @@ def first_run_usage_notice() -> None:
         if interactive() and stderr_visible():
             if store.notice_seen("cli_ask"):
                 return
-            err(usage_card())
+            err(usage_card(counter=store.counter_eligible))
             print("Share anonymous usage? [s]hare / [d]on't share / Enter to skip: ", end="", file=sys.stderr, flush=True)   # stderr: input() would print to stdout
             try:
                 answer = input().strip().lower()
@@ -1752,16 +1755,14 @@ def cmd_usage(args) -> int:
         store.decide("share", usage.get_transport())
         print("Sharing anonymous usage is on. See exactly what is sent: mdpipeline usage log")
     elif action == "off":
-        store.decide("decline", usage.get_transport())
-        print("Anonymous usage is off. Nothing is sent.")
+        counted = store.decide("decline", usage.get_transport())
+        print("Anonymous usage is off. One anonymous count of this answer was sent (no install ID). Nothing else will be." if counted
+              else "Anonymous usage is off. Nothing is sent.")
     elif action == "reset-id":
         print(f"New install ID: {store.reset_install_id()}")
     elif action == "flush":
         sent = store.flush(usage.get_transport())
         print(f"Sent {sent} event{'' if sent == 1 else 's'}.")
-    elif action == "counter":
-        store.set_counter_enabled(args.state == "on")
-        print(f"The consent counter is {args.state}.")
     elif action == "log":
         log = store.view()["log"]
         if args.json:
@@ -1769,11 +1770,11 @@ def cmd_usage(args) -> int:
         elif not log:
             print("Nothing has been sent from this computer.")
         for entry in ([] if args.json else log):
-            note = "  (goes to the team: sent because you chose to)" if entry.get("chosen") else ""
+            note = "  (goes to the team: sent because you chose to)" if entry.get("chosen") else f"  ({usage.COUNTER_LOG_LABEL})" if entry.get("counter") else ""
             print(f"{entry.get('at', '-')}  {entry['event']}  {json.dumps(entry['properties'])}{note}")
     else:
         view = store.view()
-        state = {"share": "Sharing anonymous usage.", "decline": "Not sharing (you chose Don't share). Nothing is sent.",
+        state = {"share": "Sharing anonymous usage.", "decline": "Not sharing (you chose Don't share). " + ("Nothing else is sent." if view["counter_eligible"] else "Nothing is sent."),
                  "unanswered": "Not chosen yet, so nothing is shared."}[view["consent"]]
         print(f"Anonymous usage data: {state}\n")
         print("What we send:\n" + "\n".join(f"  - {line}" for line in view["what_we_send"]))

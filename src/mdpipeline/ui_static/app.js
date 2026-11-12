@@ -199,7 +199,7 @@ function renderTop() {
    what the person typed (value), where they are (focus) and where the cursor is survive, and a value from the page state or the server never replaces what
    they typed. Done here, at the render, not in each caller. Only on the SAME screen (a new screen is drawn from its own state). The values are held in a
    local variable for the duration of one redraw: never in the page state, storage, requests or logs, so passwords and tokens are kept the same way. */
-const typedKey = (el) => el.id || (el.dataset && (el.dataset.frBind ? "fr:" + el.dataset.frBind : el.dataset.fbBind ? "fb:" + el.dataset.fbBind : "")) || "";
+const typedKey = (el) => el.id || (el.dataset && (el.dataset.schedule ? "sched:" + el.dataset.schedule : el.dataset.frBind ? "fr:" + el.dataset.frBind : el.dataset.fbBind ? "fb:" + el.dataset.fbBind : "")) || "";
 const isTypedField = (el) => el.matches && el.matches("input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), textarea, select");
 
 /* A field a redraw removes (the "counting" card replaces a form while a read is under way) and a later redraw re-creates: the person's value and focus come back, ONCE,
@@ -215,6 +215,7 @@ function captureTyped(root) {
   root.querySelectorAll("input, textarea, select").forEach((el) => {
     const key = typedKey(el);
     if (!key || !isTypedField(el) || el.value === el.defaultValue && el !== active) return;       // untouched fields are drawn from the page state as before
+    if (el.dataset && el.dataset.schedule && el !== active) return;                                // MD-230: the schedule choice is kept only while the person is using it; otherwise the state's value is drawn
     typed.push({ key, value: el.value, focus: el === active, start: el.selectionStart, end: el.selectionEnd, dir: el.selectionDirection });
   });
   const now = Date.now();

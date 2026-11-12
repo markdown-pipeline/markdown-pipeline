@@ -146,3 +146,10 @@ def test_every_example_is_accepted_unchanged_by_the_allowlist(name):
 def test_every_event_with_properties_has_an_example_that_uses_each_property():
     for name, event in EVENTS.items():
         assert set(event.example) == set(event.props), name
+
+
+def test_md231_first_own_sync_event_and_the_is_sample_flag_are_allowlisted():
+    assert set(EVENTS["first_own_sync_completed"].props) >= {"source_type", "files_bucket", "duration_s", "ms_since_first_open"}
+    for name in ("first_sync_completed", "sync_completed", "sync_failed", "source_added", "source_connected", "pipeline_created"):
+        assert "is_sample" in EVENTS[name].props, name
+    assert sanitize("sync_completed", {"is_sample": "yes"}).get("is_sample") is None

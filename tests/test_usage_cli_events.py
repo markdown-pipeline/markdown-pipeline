@@ -102,8 +102,8 @@ def test_adding_a_pipeline_on_the_command_line_reports_it(brain, make_source, sh
     src = make_source("a", {"1.md": "1"})
     code, _, err = run(capsys, "pipeline", "add", "p", "--source", str(src), brain=brain)
     assert code == 0, err
-    assert [own(e) for e in queued("pipeline_created")] == [{"n_pipelines": 1}]
-    assert [own(e) for e in queued("source_added")] == [{"source_type": "folder", "n_sources": 1}]
+    assert [own(e) for e in queued("pipeline_created")] == [{"n_pipelines": 1, "is_sample": False}]
+    assert [own(e) for e in queued("source_added")] == [{"source_type": "folder", "n_sources": 1, "is_sample": False}]
 
 
 def test_a_sync_with_a_revoked_jira_token_reports_sync_failed_auth_and_never_sync_completed(brain, add_pipeline, fake, sharing, capsys, monkeypatch):

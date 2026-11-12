@@ -53,6 +53,16 @@ def error_class_of(category: str) -> str:
     return _CLASS_OF_CATEGORY.get(category, "unknown")
 
 
+def is_sample_pipeline(pipeline) -> bool:
+    """Whether this is the bundled sample (MD-231). Only a flag: a person's own pipeline called "sample" is not it. Never raises."""
+    try:
+        from . import sample
+
+        return bool(sample.is_sample(pipeline))
+    except Exception:                   # noqa: BLE001
+        return False
+
+
 def _error_class_of_result(res) -> str:
     categories = [res.category] + [g.category for g in (res.plan.groups if res.plan else []) if getattr(g, "category", "")]
     for category in categories:
@@ -78,16 +88,19 @@ def sync_finished(res, pipeline) -> None:
     try:
         if res.dry_run:
             return
-        kind, counts = source_type_of(pipeline), res.counts()
+        kind, counts, is_sample = source_type_of(pipeline), res.counts(), is_sample_pipeline(pipeline)
         seconds = round(res.duration_ms / 1000, 1)
         if res.result in ("ok", "conflicts"):
             usage.emit("sync_completed", trigger=trigger_class(res.trigger), source_type=kind,
                        changed_bucket=bucket(sum(counts.get(k, 0) for k in COUNTED)), deleted_bucket=bucket(counts.get("deleted", 0)),
-                       duration_s=seconds)
+                       duration_s=seconds, is_sample=is_sample)
             files = sum(counts.get(k, 0) for k in FILES)
             store = usage.UsageStore()
             if files > 0 and store.note_first_sync():          # the clock is local and runs even without consent
                 usage.emit("first_sync_completed", source_type=kind, files_bucket=bucket(files), duration_s=seconds,
+                           ms_since_first_open=store.ms_since_first_open(), is_sample=is_sample)
+            if files > 0 and not is_sample and store.sharing and store.note_first_own_sync():       # MD-231: M1, the first sync of the person's own source
+                usage.emit("first_own_sync_completed", source_type=kind, files_bucket=bucket(files), duration_s=seconds,
                            ms_since_first_open=store.ms_since_first_open())
             skipped_for_front_matter = len(res.plan.front_matter_warnings) if res.plan else 0
             if skipped_for_front_matter:          # MD-201 AC3: only how many files, never which
@@ -97,10 +110,10 @@ def sync_finished(res, pipeline) -> None:
         elif res.result == "error" and _locked(res):
             usage.emit("notice_shown", kind=_locked(res))      # MD-161: waiting for the person to unlock is not a failure; the reliability numbers stay clean
         elif res.result == "error":
-            usage.emit("sync_failed", error_class=_error_class_of_result(res), source_type=kind)
+            usage.emit("sync_failed", error_class=_error_class_of_result(res), source_type=kind, is_sample=is_sample)
         elif res.result == "blocked":
             usage.emit("guard_triggered", cause="unknown")
-            usage.emit("sync_failed", error_class="guard_blocked", source_type=kind)
+            usage.emit("sync_failed", error_class="guard_blocked", source_type=kind, is_sample=is_sample)
     except Exception:                   # noqa: BLE001 - reporting must never change or fail a sync
         return
 
@@ -167,18 +180,19 @@ def _emit_glob_scope(pipeline) -> None:
                    pattern_count=len(pipeline.include) + len(pipeline.exclude))
 
 
-def _source_added(source, total: int) -> None:
-    usage.emit("source_added", source_type=_kind_of(source), n_sources=total)
-    usage.emit("source_connected", source_type=_kind_of(source))
+def _source_added(source, total: int, is_sample: bool) -> None:
+    usage.emit("source_added", source_type=_kind_of(source), n_sources=total, is_sample=is_sample)
+    usage.emit("source_connected", source_type=_kind_of(source), is_sample=is_sample)
     _emit_jql_scope(source)
 
 
 def pipeline_created(n_pipelines: int, pipeline) -> None:
     """A pipeline was saved (CLI or UI): the pipeline, each of its sources, its target and any narrowed scope."""
     try:
-        usage.emit("pipeline_created", n_pipelines=n_pipelines)
+        is_sample = is_sample_pipeline(pipeline)
+        usage.emit("pipeline_created", n_pipelines=n_pipelines, is_sample=is_sample)
         for source in pipeline.sources:
-            _source_added(source, len(pipeline.sources))
+            _source_added(source, len(pipeline.sources), is_sample)
         usage.emit("target_connected", target_type=target_type_of(pipeline))
         _emit_glob_scope(pipeline)
     except Exception:                   # noqa: BLE001
@@ -201,7 +215,7 @@ def pipeline_updated(old, new) -> None:
         for source in new.sources:
             was = before.get(source.label)
             if was is None:
-                _source_added(source, len(new.sources))
+                _source_added(source, len(new.sources), is_sample_pipeline(new))
                 continue
             if was.enabled != source.enabled:
                 usage.emit("source_toggled", state="on" if source.enabled else "off")

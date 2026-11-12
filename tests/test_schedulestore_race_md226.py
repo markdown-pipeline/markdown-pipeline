@@ -128,6 +128,7 @@ def test_many_reads_during_many_updates_never_fail_and_never_see_a_partial_file(
 def test_the_ui_shows_a_plain_message_not_a_python_error_when_the_schedule_cannot_be_saved(brain, monkeypatch):
     from uihelper import running_ui
     monkeypatch.setattr(schedulestore.fsretry.time, "sleep", lambda s: None)
+    monkeypatch.setattr(schedulestore.fsretry, "retry_enabled", lambda: True)      # MD-229: the refusal is simulated as Windows
     with running_ui(brain) as ui:
         monkeypatch.setattr(os, "replace", _refuse(10**6)[0])
         status, body = ui.post("/api/background", {"enabled": False})

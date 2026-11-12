@@ -28,6 +28,12 @@ _SAVE_FAILED = ("Markdown Pipeline could not save the schedule just now because 
                 "Your previous schedule is unchanged. Please try again in a moment.")
 
 
+def _no_permission(folder) -> str:
+    """Linux/macOS (MD-229 part B): the settings folder is not writable for this user; marketing's sentence, verbatim."""
+    return (f"Markdown Pipeline couldn't save the schedule because it doesn't have permission to write to its settings folder, {folder}. "
+            "Your previous schedule is unchanged. Make that folder writable for your user, then save again.")
+
+
 def _defaults() -> dict:
     return {"background": {"enabled": True, "announced": False, "acknowledged": False}, "brains": [], "runtime": {}}
 
@@ -90,7 +96,7 @@ class SchedulerStore:
                     fsretry.retry_permission(lambda: os.replace(tmp, self._path))
                 except PermissionError as e:
                     tmp.unlink(missing_ok=True)
-                    raise ScheduleSaveError(_SAVE_FAILED) from e
+                    raise ScheduleSaveError(_SAVE_FAILED if fsretry.retry_enabled() else _no_permission(self._path.parent)) from e
             finally:
                 os.close(fd)
 

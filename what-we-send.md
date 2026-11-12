@@ -37,7 +37,7 @@ you open the app. We do not build a profile of a person.
 | You choose Jira projects | `jira_project_pick` | whether you ticked projects in the list or wrote your own query, and how many (a range). Never the project names or keys |
 | You choose a GitHub branch | `branch_pick` | whether you chose it from the repository's list or typed it. Never the branch name |
 | You preview the first sync | `dry_run_viewed` | how many files, as a range |
-| Your first files are written | `first_sync_completed` | the kind of source, how many files (range) and how long it took |
+| Your first files are written | `first_sync_completed`, `first_own_sync_completed` | the kind of source, how many files (range) and how long it took |
 | A sync runs | `sync_completed`, `sync_failed` | what started it (you or the schedule), counts as ranges, duration, and an error class |
 | A sync skips a file because its front matter has a mistake | `front_matter_warning` | how many files were skipped in that run (a number). Never the file names, paths or lines |
 | A sync waits for your OK | `guard_triggered`, `guard_resolved` | that it happened, and whether you approved or cancelled |

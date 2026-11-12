@@ -12,7 +12,7 @@ from .usage_events import EVENTS, AssetName, Count, EmailAddress, Enum, EnumList
 GROUPS: list[tuple[str, tuple[str, ...]]] = [
     ("A. Activation path and friction (time to value)", (
         "app_opened", "consent_decided", "onboarding_step_viewed", "onboarding_step_completed", "source_add_started", "source_auth_started",
-        "source_auth_completed", "source_auth_failed", "source_connected", "target_connected", "dry_run_viewed", "first_sync_completed",
+        "source_auth_completed", "source_auth_failed", "source_connected", "target_connected", "dry_run_viewed", "first_sync_completed", "first_own_sync_completed",
         "error_shown", "help_opened", "session_ended_before_first_sync", "secret_store_used")),
     ("B. Value and habit", (
         "agent_snippet_copied", "agent_read", "first_agent_read", "sync_completed", "sync_failed", "front_matter_warning", "guard_triggered", "guard_resolved",

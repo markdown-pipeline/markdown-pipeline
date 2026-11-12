@@ -376,6 +376,10 @@ class UsageStore:
         """Remember the first completed sync. True only for the call that remembered it."""
         return self._stamp_once("first_sync_ts", now)
 
+    def note_first_own_sync(self, now: datetime | None = None) -> bool:
+        """Remember the first completed sync of a pipeline that is not the bundled sample (MD-231). True only for the call that remembered it."""
+        return self._stamp_once("first_own_sync_ts", now)
+
     def ms_since_first_sync(self, now: datetime | None = None) -> int | None:
         return self._ms_since("first_sync_ts", now)
 

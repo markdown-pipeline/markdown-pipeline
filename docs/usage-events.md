@@ -280,6 +280,7 @@ R4: a source is connected. Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `is_sample` | `true` / `false` |
 
 Example payload as sent:
 
@@ -291,6 +292,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "is_sample": false,
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -366,12 +368,47 @@ Time to first file. Emitted from: engine.
 | `files_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
 | `duration_s` | seconds, 0 to 1,000,000, one decimal |
 | `ms_since_first_open` | whole number, 0 to 3,000,000,000 |
+| `is_sample` | `true` / `false` |
 
 Example payload as sent:
 
 ```json
 {
   "event": "first_sync_completed",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "source_type": "jira",
+    "files_bucket": "11-100",
+    "duration_s": 12.4,
+    "ms_since_first_open": 241000,
+    "is_sample": false,
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false
+  }
+}
+```
+
+### `first_own_sync_completed`
+
+MD-231, M1: the first sync of the person's own source (not the bundled sample) that wrote files. Emitted from: engine.
+
+| Property | Allowed values |
+|---|---|
+| `source_type` | `folder` / `jira` / `other` |
+| `files_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
+| `duration_s` | seconds, 0 to 1,000,000, one decimal |
+| `ms_since_first_open` | whole number, 0 to 3,000,000,000 |
+
+Example payload as sent:
+
+```json
+{
+  "event": "first_own_sync_completed",
   "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
   "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
   "timestamp": "2026-10-08T09:15:02Z",
@@ -596,6 +633,7 @@ Example payload as sent:
 | `changed_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
 | `deleted_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
 | `duration_s` | seconds, 0 to 1,000,000, one decimal |
+| `is_sample` | `true` / `false` |
 
 Example payload as sent:
 
@@ -611,6 +649,7 @@ Example payload as sent:
     "changed_bucket": "1-10",
     "deleted_bucket": "0",
     "duration_s": 3.2,
+    "is_sample": false,
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -628,6 +667,7 @@ Reliability as users see it. Emitted from: engine.
 |---|---|
 | `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `script_missing` / `unknown` |
 | `source_type` | `folder` / `jira` / `other` |
+| `is_sample` | `true` / `false` |
 
 Example payload as sent:
 
@@ -640,6 +680,7 @@ Example payload as sent:
   "properties": {
     "error_class": "network",
     "source_type": "jira",
+    "is_sample": false,
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -826,6 +867,7 @@ Expansion. Emitted from: ui, cli.
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
 | `n_sources` | whole number, 0 to 1,000 |
+| `is_sample` | `true` / `false` |
 
 Example payload as sent:
 
@@ -838,6 +880,7 @@ Example payload as sent:
   "properties": {
     "source_type": "folder",
     "n_sources": 2,
+    "is_sample": false,
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -908,6 +951,7 @@ Expansion. Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `n_pipelines` | whole number, 0 to 1,000 |
+| `is_sample` | `true` / `false` |
 
 Example payload as sent:
 
@@ -919,6 +963,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "n_pipelines": 1,
+    "is_sample": false,
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",

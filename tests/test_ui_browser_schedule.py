@@ -208,6 +208,22 @@ def test_stepping_through_the_choices_with_the_arrow_keys_saves_the_one_you_stop
     assert load_config(one).get("acme").schedule == "daily"
 
 
+def test_the_agent_panel_loading_late_does_not_take_the_focus_from_the_schedule_select(page, one):
+    """MD-234 (H-230-2): the agent panel's answer redraws the home screen on its own (``agRender``); a redraw must keep the focus and value."""
+    sync_pipeline(one, "acme", trigger="cli")
+    with running_ui(one) as ui:
+        open_app(page, ui)
+        sel = page.locator('select[data-schedule="acme"]')
+        expect(sel).to_be_visible()
+        expect(page.locator("[data-next]")).to_be_visible()
+        sel.focus()
+        expect(sel).to_be_focused()
+        page.evaluate("agRender()")                                  # what a late /api/agents answer does
+        expect(page.locator('select[data-schedule="acme"]')).to_be_focused()
+        page.keyboard.press("ArrowDown")
+        expect(page.locator('select[data-schedule="acme"]')).to_have_value("6h")
+
+
 def test_on_a_phone_the_interval_choice_sits_under_the_row_not_in_the_narrow_column(page, one):
     sync_pipeline(one, "acme", trigger="cli")
     page.set_viewport_size({"width": 390, "height": 800})
@@ -242,3 +258,37 @@ def test_view_mode_shows_the_next_sync(page, one):
         open_app(page, ui)
         page.get_by_role("link", name="acme").click()
         expect(page.locator("#v-next")).to_contain_text("every hour")
+
+
+def test_a_redraw_between_two_arrow_keys_keeps_the_shown_choice_and_the_focus(page, one):
+    """MD-230: a redraw of the home screen (a poll that saw a change) must not reset the select the person is stepping through or take its focus away."""
+    sync_pipeline(one, "acme", trigger="cli")
+    with running_ui(one) as ui:
+        open_app(page, ui)
+        sel = page.locator('select[data-schedule="acme"]')
+        expect(sel).to_be_visible()
+        expect(page.locator("[data-next]")).to_be_visible()
+        sel.focus()
+        expect(sel).to_be_focused()
+        page.clock.pause_at(page.evaluate("Date.now()") + 1000)        # the page's 400 ms save timer cannot fire during the test steps
+        page.keyboard.press("ArrowDown")                                # 1h -> 6h
+        expect(sel).to_have_value("6h")
+        page.evaluate("render()")                                       # what a poll-driven refresh does
+        expect(sel).to_have_value("6h")
+        expect(sel).to_be_focused()
+        page.keyboard.press("ArrowDown")                                # 6h -> daily
+        expect(sel).to_have_value("daily")
+        page.clock.run_for(500)
+        page.clock.resume()
+        expect(page.locator("[data-next]")).to_contain_text("every day", timeout=15000)
+    assert load_config(one).get("acme").schedule == "daily"
+
+
+def test_a_redraw_does_not_hold_back_a_schedule_changed_elsewhere_when_the_select_is_not_in_use(page, one):
+    sync_pipeline(one, "acme", trigger="cli")
+    with running_ui(one) as ui:
+        open_app(page, ui)
+        sel = page.locator('select[data-schedule="acme"]')
+        expect(page.locator("[data-next]")).to_be_visible()
+        page.evaluate("S.state.pipelines[0].schedule = '6h'; render()")      # the state says 6h and the person is not touching the select
+        expect(sel).to_have_value("6h")

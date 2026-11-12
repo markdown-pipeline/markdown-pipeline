@@ -24,6 +24,14 @@ class FileInUse(OSError):
     """The output file stayed locked by another program (Windows). The old file is intact; the message is for the person (MD-228)."""
 
 
+class NoPermission(PermissionError):
+    """The operating system refused a write or delete for lack of permission (Linux/macOS, MD-229 part B). The message is for the person: what, where, what to do."""
+
+
+def _not_written(name: str, folder: Path) -> NoPermission:
+    return NoPermission(f"{name} wasn't written because you don't have permission to write to {folder}. Make that folder writable for your user, then sync again.")
+
+
 class WriteRefused(Exception):
     """A write or delete was refused by the boundary (message is user-facing)."""
 
@@ -64,7 +72,13 @@ class SafeWriter:
     # -- operations -----------------------------------------------------------------
     def write(self, rel: str, data: bytes) -> None:
         target = self._resolve(rel)
-        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError as exc:
+            if fsretry.retry_enabled():
+                raise
+            blocked = Path(exc.filename).parent if exc.filename else target.parent          # the folder that could not get the new subfolder
+            raise _not_written(target.name, blocked) from exc
         self._resolve(rel)  # re-check after creating folders
         ensure_config_dir(self.brain)
         self.tmp_dir.mkdir(exist_ok=True)
@@ -76,9 +90,9 @@ class SafeWriter:
                 os.fsync(handle.fileno())
             try:
                 fsretry.replace(tmp, target)
-            except PermissionError as exc:             # MD-228 (Windows only, MD-229: on Linux/macOS a PermissionError is real and is raised as it was in 0.1.20)
-                if not fsretry.retry_enabled():
-                    raise
+            except PermissionError as exc:             # MD-228 (Windows only, MD-229): an editor has the file open
+                if not fsretry.retry_enabled():        # Linux/macOS: a real permission problem (MD-229 part B)
+                    raise _not_written(target.name, target.parent) from exc
                 raise FileInUse(f"{target.name} is open in another program, so it wasn't written. Close it there, and the next sync will try again.") from exc
         except BaseException:
             tmp.unlink(missing_ok=True)
@@ -91,8 +105,10 @@ class SafeWriter:
         except FileNotFoundError:
             return
         except PermissionError as exc:                 # MD-228 (Windows only, MD-229)
-            if not fsretry.retry_enabled():
-                raise  # open in another program (Windows): the file stays and is still tracked, so it is retried, never "deleted"
+            if not fsretry.retry_enabled():            # Linux/macOS: a real permission problem; the file stays and is still tracked (MD-229 part B)
+                raise NoPermission(f"{target.name} wasn't removed because you don't have permission to change files in {target.parent}. "
+                                   "Make that folder writable for your user, then sync again.") from exc
+            # open in another program (Windows): the file stays and is still tracked, so it is retried, never "deleted"
             raise FileInUse(f"{target.name} is open in another program, so it wasn't removed. Close it there, and the next sync will try again.") from exc
         parent = target.parent
         keep = {self.brain.root, self.brain.raw_dir}              # the output folder itself, and a raw/ that a brain expects

@@ -35,9 +35,9 @@ def jira(label="j", jql="project = ACME-SECRET"):
 def test_creating_a_pipeline_reports_it_its_sources_and_its_target(brain, make_source, sharing):
     a, b = make_source("a", {"1.md": "1"}), make_source("b", {"2.md": "2"})
     create_pipeline(brain, Pipeline.new("p", [str(a), str(b)]))
-    assert props("pipeline_created") == [{"n_pipelines": 1}]
-    assert props("source_added") == [{"source_type": "folder", "n_sources": 2}] * 2
-    assert props("source_connected") == [{"source_type": "folder"}] * 2
+    assert props("pipeline_created") == [{"n_pipelines": 1, "is_sample": False}]
+    assert props("source_added") == [{"source_type": "folder", "n_sources": 2, "is_sample": False}] * 2
+    assert props("source_connected") == [{"source_type": "folder", "is_sample": False}] * 2
     assert props("target_connected") == [{"target_type": "folder"}]
 
 

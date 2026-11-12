@@ -28,8 +28,7 @@ function agVisible() { return (S.screen === "firstrun" && FR && FR.step === "rea
 
 function agRender() {
   if (S.screen === "firstrun" && FR && FR.step === "ready") renderFirstRun();
-  else if (S.screen === "settings") renderSettings();
-  else if (S.screen === "home") renderHome();
+  else if (S.screen === "settings" || S.screen === "home") render();       // MD-234: through render(), which keeps the focus and what the person typed across the redraw
 }
 
 function agPollIfWaiting() {                                    // the read confirmation: ask the app every 2 s until the agent has read something

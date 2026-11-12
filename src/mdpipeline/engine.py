@@ -26,7 +26,7 @@ from .target import CommitInfo, ConcurrentChange, CredentialConflict, TargetBusy
 from .targetmessages import with_hint
 from . import usage_hooks
 from .schedulestore import register_brain
-from .writer import FileInUse, WriteRefused
+from .writer import FileInUse, NoPermission, WriteRefused
 
 APPROVING_TRIGGERS = ("cli", "ui")
 MAX_ATTEMPTS = 3          # a target that keeps changing under a sync (someone else committing) is retried this often
@@ -256,7 +256,7 @@ def _run_locked(brain: Brain, bound: Brain, pipeline: Pipeline, trigger: str, ap
         except WriteRefused as exc:
             item.error, item.reason = True, str(exc)
             continue
-        except FileInUse as exc:
+        except (FileInUse, NoPermission) as exc:
             item.error, item.reason = True, str(exc)
             continue
         except OSError as exc:

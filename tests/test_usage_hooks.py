@@ -213,3 +213,130 @@ def test_a_locked_vault_reports_the_needs_you_signal_instead(sharing):
     usage_hooks.sync_finished(_locked_result(), Pipeline.new("p", ["/a"]))
     (e,) = queued("notice_shown")
     assert e["properties"]["kind"] == "vault_locked"
+
+
+# --- MD-231: the first sync of a person's OWN source, apart from the bundled sample ------------------------------------
+def _sample_pipeline(add_pipeline):
+    from mdpipeline import sample
+
+    return add_pipeline(Pipeline(sample.NAME, [Source(str(sample.source_dir()), sample.LABEL)]))
+
+
+def _jira_pipeline(add_pipeline, name="mine"):
+    site = "https://acme.atlassian.net"
+    return add_pipeline(Pipeline(name, [Source(site, "jira", type="jira", options={
+        "site": site, "jql": "project = MD", "email_ref": "env:JIRA_EMAIL", "token_ref": "env:JIRA_TOKEN"})], guard_threshold_percent=100))
+
+
+def test_sample_then_own_folder_gives_one_first_own_sync_and_a_flagged_first_sync(brain, folder_pipeline, add_pipeline, sharing):
+    _sample_pipeline(add_pipeline)
+    sync_pipeline(brain, "sample", trigger="ui")
+    (first,) = queued("first_sync_completed")
+    assert first["properties"]["is_sample"] is True and queued("first_own_sync_completed") == []
+    sync_pipeline(brain, "p", trigger="cli")
+    sync_pipeline(brain, "p", trigger="cli")
+    (own,) = queued("first_own_sync_completed")
+    assert own["properties"]["source_type"] == "folder" and own["properties"]["files_bucket"] == "1-10"
+    assert isinstance(own["properties"]["duration_s"], (int, float))
+    assert len(queued("first_sync_completed")) == 1
+
+
+def test_sample_then_own_jira_gives_one_first_own_sync(brain, add_pipeline, sharing, monkeypatch):
+    from fake_jira import FakeJira
+    from mdpipeline import jira_api
+
+    fake = FakeJira(site="acme", email="me@example.com", token="tok", display_name="Mia")
+    fake.sleeps = []
+    jira_api.set_transport(fake, sleep=fake.sleeps.append)
+    monkeypatch.setenv("JIRA_EMAIL", "me@example.com")
+    monkeypatch.setenv("JIRA_TOKEN", "tok")
+    try:
+        _sample_pipeline(add_pipeline)
+        _jira_pipeline(add_pipeline)
+        fake.add_issue("MD", "First issue")
+        sync_pipeline(brain, "sample", trigger="ui")
+        sync_pipeline(brain, "mine", trigger="cli")
+        sync_pipeline(brain, "mine", trigger="cli")
+    finally:
+        jira_api.set_transport(None)
+    (own,) = queued("first_own_sync_completed")
+    assert own["properties"]["source_type"] == "jira"
+
+
+def test_an_own_sync_that_wrote_no_file_is_not_the_first_own_sync_but_the_next_one_with_files_is(brain, add_pipeline, make_source, sharing):
+    src = make_source("later", {})
+    add_pipeline(Pipeline.new("e", [str(src)]))
+    sync_pipeline(brain, "e", trigger="cli")
+    assert queued("first_own_sync_completed") == []
+    (src / "a.md").write_text("# a\nbody", encoding="utf-8")
+    sync_pipeline(brain, "e", trigger="cli")
+    assert len(queued("first_own_sync_completed")) == 1
+
+
+def test_a_failed_own_sync_is_not_the_first_own_sync_and_a_failed_sample_is_flagged(brain, add_pipeline, tmp_path, sharing):
+    add_pipeline(Pipeline.new("gone", [str(tmp_path / "missing")]))
+    sync_pipeline(brain, "gone", trigger="cli")
+    (own_fail,) = queued("sync_failed")
+    assert queued("first_own_sync_completed") == [] and own_fail["properties"]["is_sample"] is False
+    from mdpipeline import sample
+    import shutil
+
+    _sample_pipeline(add_pipeline)
+    shutil.rmtree(sample.source_dir())
+    sync_pipeline(brain, "sample", trigger="ui")
+    assert [e["properties"]["is_sample"] for e in queued("sync_failed")][-1] is True
+
+
+def test_an_install_with_no_sample_sends_both_first_events_on_its_first_own_sync(brain, folder_pipeline, sharing):
+    sync_pipeline(brain, "p", trigger="cli")
+    (first,) = queued("first_sync_completed")
+    (own,) = queued("first_own_sync_completed")
+    assert first["properties"]["is_sample"] is False
+    assert {k: v for k, v in own["properties"].items() if k in ("source_type", "files_bucket")} == \
+           {k: v for k, v in first["properties"].items() if k in ("source_type", "files_bucket")}
+    assert "ms_since_first_open" in own["properties"] or UsageStore().ms_since_first_open() is None
+
+
+def test_the_sample_sync_is_flagged_on_sync_completed_and_an_own_one_is_not(brain, folder_pipeline, add_pipeline, sharing):
+    _sample_pipeline(add_pipeline)
+    sync_pipeline(brain, "sample", trigger="ui")
+    sync_pipeline(brain, "p", trigger="ui")
+    assert [e["properties"]["is_sample"] for e in queued("sync_completed")] == [True, False]
+
+
+def test_a_user_pipeline_named_sample_is_not_the_sample(brain, add_pipeline, make_source, sharing):
+    src = make_source("mine", {"a.md": "# a"})
+    add_pipeline(Pipeline.new("sample", [str(src)]))
+    sync_pipeline(brain, "sample", trigger="cli")
+    (first,) = queued("first_sync_completed")
+    assert first["properties"]["is_sample"] is False and len(queued("first_own_sync_completed")) == 1
+
+
+def test_without_consent_the_new_event_queues_nothing(brain, folder_pipeline):
+    UsageStore().set_consent("decline")
+    sync_pipeline(brain, "p", trigger="cli")
+    assert queued() == []
+
+
+def test_pipeline_and_source_events_carry_is_sample(brain, add_pipeline, make_source, sharing):
+    own = Pipeline.new("mine", [str(make_source("m", {"a.md": "x"}))])
+    usage_hooks.pipeline_created(1, own)
+    from mdpipeline import sample
+
+    usage_hooks.pipeline_created(2, Pipeline(sample.NAME, [Source(str(sample.source_dir()), sample.LABEL)]))
+    for name in ("pipeline_created", "source_added", "source_connected"):
+        assert [e["properties"]["is_sample"] for e in queued(name)] == [False, True], name
+
+
+# --- MD-231 AC10: the once-per-install stamp is set only when the event is actually queued -------------------------------
+@pytest.mark.parametrize("choice", ["decline", None])
+def test_not_sharing_sets_no_first_own_sync_stamp_then_share_sends_exactly_one(brain, folder_pipeline, choice):
+    if choice:
+        UsageStore().set_consent(choice)
+    sync_pipeline(brain, "p", trigger="cli")
+    assert queued() == [] and UsageStore()._read().get("first_own_sync_ts") is None
+    UsageStore().set_consent("share")
+    sync_pipeline(brain, "p", trigger="cli")
+    assert len(queued("first_own_sync_completed")) == 1
+    sync_pipeline(brain, "p", trigger="cli")
+    assert len(queued("first_own_sync_completed")) == 1

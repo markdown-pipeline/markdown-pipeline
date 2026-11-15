@@ -34,9 +34,16 @@ def _epoch(value: str) -> float:
         return 0.0
 
 
+def is_public(source: Source) -> bool:
+    """MD-236: a source read with no login. Anything else (including a config without the option) is the login mode."""
+    return source.options.get("auth_mode") == "public"
+
+
 def api_for(source: Source) -> JiraApi:
     """A client whose credentials are resolved on first use, from references only (never stored values)."""
     o = source.options
+    if is_public(source):                      # MD-236: no email, no token, no vault
+        return JiraApi(o["site"], public=True)
     # "_email" / "_token" are typed, not yet saved values (a preview or a test before the vault has them): used from memory, never persisted
     return JiraApi(o["site"], o["_email"] if o.get("_email") else (lambda: resolve_token(o["email_ref"])),
                    o["_token"] if o.get("_token") else (lambda: resolve_token(o["token_ref"])))
@@ -105,6 +112,8 @@ class JiraSource:
 
     def test_connection(self) -> dict:
         """The account the credentials belong to and how many issues the JQL matches. Read-only."""
+        if is_public(self.source):              # MD-236: no /myself; counting the matches is also the public-site check
+            return {"user": "no login (public)", "matches": self.api.count(self.options["jql"]), "site": self.api.site}
         me = self.api.myself()
         return {"user": me.get("displayName") or "unknown user", "matches": self.api.count(self.options["jql"]), "site": self.api.site}
 
@@ -124,7 +133,7 @@ def check_jira_source(source: Source, remote: bool) -> tuple[list[tuple[str, str
         errors.append(("bad-jira-site", "The Jira site must be an https URL like https://yourcompany.atlassian.net."))
     if not (options.get("jql") or "").strip():
         errors.append(("bad-jira-jql", "The JQL is empty: say which issues to bring in, for example: project = MD"))
-    for key, name in (("email_ref", "email"), ("token_ref", "API token")):
+    for key, name in (() if is_public(source) else (("email_ref", "email"), ("token_ref", "API token"))):
         try:
             parse_ref(options.get(key, ""))
         except CredentialError as exc:

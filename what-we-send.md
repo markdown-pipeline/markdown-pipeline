@@ -57,6 +57,7 @@ you open the app. We do not build a profile of a person. Like any web request, e
 | You choose a GitHub branch | `branch_pick` | whether you chose it from the repository's list or typed it. Never the branch name |
 | You preview the first sync | `dry_run_viewed` | how many files, as a range |
 | Your first files are written | `first_sync_completed`, `first_own_sync_completed` | the kind of source, how many files (range) and how long it took |
+| You run a built-in example (`mdpipeline recipe`) | `first_recipe_sync_completed`; also `recipe_id` on pipeline and sync events | which built-in example you ran, from our fixed list, how many files (a range) and how long it took. On your own pipelines, `recipe_id` is always "none". Never your sites, projects or queries |
 | A sync runs | `sync_completed`, `sync_failed` | what started it (you or the schedule), counts as ranges, duration, and an error class |
 | A sync skips a file because its front matter has a mistake | `front_matter_warning` | how many files were skipped in that run (a number). Never the file names, paths or lines |
 | A sync waits for your OK | `guard_triggered`, `guard_resolved` | that it happened, and whether you approved or cancelled |
@@ -72,6 +73,8 @@ you open the app. We do not build a profile of a person. Like any web request, e
 | Your agent reads the files | `agent_read`, `first_agent_read` | how many reads that day, and how long after the first sync. Nothing about what was read |
 | A one-question card is shown | `feedback_shown` | which question it was (one of a fixed list). Each card appears only once on a computer, so this is sent once per card. Never the question's text or your answer |
 | You try the sample | `try_started`, `try_completed` | that you started it, and how long it took |
+
+Wherever we send the kind of source, for Jira we also send whether the site is read with a login or as a public site with no login (`auth_mode`).
 
 Every event also says, as a plain yes or no, whether the install belongs to the developers (`is_internal`), so our own testing is not counted as users.
 It is `no` for you and says nothing about you.

@@ -109,7 +109,7 @@ def test_filter_events_and_team_events_are_not_in_the_first_release_allowlist():
 
 
 def test_the_first_agent_read_and_schedule_events_carry_the_properties_product_asked_for():
-    assert set(EVENTS["first_agent_read"].props) == {"ms_since_first_sync"}
+    assert set(EVENTS["first_agent_read"].props) == {"ms_since_first_sync", "recipe_id"}
     assert set(EVENTS["schedule_changed"].props) == {"old_interval", "new_interval"}
     assert "ms_since_first_open" in EVENTS["first_sync_completed"].props
 

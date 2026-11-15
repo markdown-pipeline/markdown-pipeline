@@ -403,6 +403,10 @@ class UsageStore:
         """Remember the first completed sync of a pipeline that is not the bundled sample (MD-231). True only for the call that remembered it."""
         return self._stamp_once("first_own_sync_ts", now)
 
+    def note_first_recipe_sync(self, now: datetime | None = None) -> bool:
+        """Remember the first completed sync of a built-in recipe (MD-238). True only for the call that remembered it."""
+        return self._stamp_once("first_recipe_sync_ts", now)
+
     def ms_since_first_sync(self, now: datetime | None = None) -> int | None:
         return self._ms_since("first_sync_ts", now)
 
@@ -636,11 +640,12 @@ def flush_detached() -> bool:
         return False
 
 
-def note_agent_read(now: datetime | None = None) -> bool:
+def note_agent_read(now: datetime | None = None, recipe_id: str = "none") -> bool:
     """One MCP read by an agent: counted for today (a count, nothing else). Without consent nothing is stored. Never raises.
 
     The previous days' counts are queued as one ``agent_read`` event per day (dated to that day); the very first read ever queues
-    ``first_agent_read`` with the time since the first sync.
+    ``first_agent_read`` with the time since the first sync and the ``recipe_id`` of what that first read touched (MD-238: a built-in
+    recipe's id, ``mixed`` or ``none``; chosen by the caller from the pipelines' markers, never from a path or a name).
     """
     try:
         store = UsageStore()
@@ -654,7 +659,7 @@ def note_agent_read(now: datetime | None = None) -> bool:
         store.count_agent_read(today)
         if store.claim_once("first_agent_read"):
             ms = store.ms_since_first_sync(now)
-            clean = sanitize("first_agent_read", {"ms_since_first_sync": ms}) or {}
+            clean = sanitize("first_agent_read", {"ms_since_first_sync": ms, "recipe_id": recipe_id}) or {}
             queued = store.record("first_agent_read", {**clean, **_globals()}) or queued
         if queued:
             schedule_flush()

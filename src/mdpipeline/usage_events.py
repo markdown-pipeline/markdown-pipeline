@@ -114,6 +114,10 @@ MS = Count(max=3_000_000_000)          # a duration in milliseconds, up to about
 
 # --- the fixed lists ---------------------------------------------------------------------------------------------------
 SOURCE_TYPE = Enum(("folder", "jira", "other"))
+AUTH_MODE_LOGIN_ONLY = Enum(("login",))               # MD-236 AC11: a public sync is never the person's own first sync
+RECIPE_ID = Enum(("jira-ecosystem-frge", "jira-hibernate-hhh", "jira-sakaiproject-sak", "none"))   # MD-238: which built-in example was run; never a host, project or JQL
+RECIPE_ID_READ = Enum(("jira-ecosystem-frge", "jira-hibernate-hhh", "jira-sakaiproject-sak", "mixed", "none"))   # first_agent_read: mixed = reads touched more than one pipeline
+AUTH_MODE = Enum(("login", "public"))                 # MD-236: how a Jira source is read; only sent with a Jira source, never a host
 TARGET_TYPE = Enum(("folder", "github"))
 ENTRY_POINT = Enum(("empty_state", "editor", "onboarding", "home", "activity", "view", "settings", "other"))
 AUTH_METHOD = Enum(("token", "oauth"))
@@ -169,6 +173,7 @@ class Event:
     props: dict = field(default_factory=dict)     # property name -> rule
     example: dict = field(default_factory=dict)   # one valid payload (must use every property)
     ships_with: str = ""                          # empty = emitted now; else the story whose feature emits it
+    note: str = ""                                # extra sentence the developer doc prints after "Emitted from"
     explicit: bool = False                        # built only from something the person pressed Send on; may carry typed words (MD-123)
 
 
@@ -188,26 +193,31 @@ EVENTS: dict[str, Event] = {
                                 {"how": "user_service", "desktop_session": "no", "linger_enabled": "no"}),
     "background_self_healed": Event("How often background sync was found dead and put back (MD-212, H-BOOT-2): the login item re-created, or the process started again by a command, the app or an agent's mcp session; no paths, no names",
                                     ("cli",), {"what": SELF_HEAL_WHAT, "via": SELF_HEAL_VIA}, {"what": "login_item", "via": "cli"}),
-    "source_add_started": Event("Which source people reach for first", ("ui",), {"source_type": SOURCE_TYPE, "entry_point": ENTRY_POINT},
-                                {"source_type": "jira", "entry_point": "empty_state"}),
-    "source_auth_started": Event("Credential friction", ("ui", "cli"), {"source_type": SOURCE_TYPE, "auth_method": AUTH_METHOD},
-                                 {"source_type": "jira", "auth_method": "token"}),
-    "source_auth_completed": Event("Credential friction", ("ui", "cli"), {"source_type": SOURCE_TYPE, "auth_method": AUTH_METHOD},
-                                   {"source_type": "jira", "auth_method": "token"}),
+    "source_add_started": Event("Which source people reach for first", ("ui",), {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "entry_point": ENTRY_POINT},
+                                {"source_type": "jira", "auth_mode": "login", "entry_point": "empty_state"}),
+    "source_auth_started": Event("Credential friction", ("ui", "cli"), {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "auth_method": AUTH_METHOD},
+                                 {"source_type": "jira", "auth_mode": "login", "auth_method": "token"}),
+    "source_auth_completed": Event("Credential friction", ("ui", "cli"), {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "auth_method": AUTH_METHOD},
+                                   {"source_type": "jira", "auth_mode": "login", "auth_method": "token"}),
     "source_auth_failed": Event("Credential friction", ("ui", "cli"),
-                                {"source_type": SOURCE_TYPE, "auth_method": AUTH_METHOD, "error_class": ERROR_CLASS},
-                                {"source_type": "jira", "auth_method": "token", "error_class": "auth"}),
-    "source_connected": Event("R4: a source is connected", ("ui", "cli"), {"source_type": SOURCE_TYPE, "is_sample": Flag()},
-                              {"source_type": "jira", "is_sample": False}),
+                                {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "auth_method": AUTH_METHOD, "error_class": ERROR_CLASS},
+                                {"source_type": "jira", "auth_mode": "login", "auth_method": "token", "error_class": "auth"}),
+    "source_connected": Event("R4: a source is connected", ("ui", "cli"), {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "recipe_id": RECIPE_ID, "is_sample": Flag()},
+                              {"source_type": "jira", "auth_mode": "login", "recipe_id": "none", "is_sample": False}),
     "target_connected": Event("Destination preference", ("ui", "cli"), {"target_type": TARGET_TYPE}, {"target_type": "github"}),
     "dry_run_viewed": Event("Use of the trust preview", ("ui", "cli"), {"items_bucket": BUCKET, "would_delete_bucket": BUCKET},
                             {"items_bucket": "11-100", "would_delete_bucket": "0"}),
     "first_sync_completed": Event("Time to first file", ("engine",),
-                                  {"source_type": SOURCE_TYPE, "files_bucket": BUCKET, "duration_s": Seconds(), "ms_since_first_open": MS, "is_sample": Flag()},
-                                  {"source_type": "jira", "files_bucket": "11-100", "duration_s": 12.4, "ms_since_first_open": 241000, "is_sample": False}),
+                                  {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "recipe_id": RECIPE_ID, "files_bucket": BUCKET, "duration_s": Seconds(), "ms_since_first_open": MS, "is_sample": Flag()},
+                                  {"source_type": "jira", "auth_mode": "login", "recipe_id": "none", "files_bucket": "11-100", "duration_s": 12.4, "ms_since_first_open": 241000, "is_sample": False}),
+    "first_recipe_sync_completed": Event("MD-238, EXP-1112-RC1 Y: a stranger's first sync of a built-in recipe that wrote files (never counted as first_own_sync_completed)", ("engine",),
+                                         {"recipe_id": RECIPE_ID, "files_bucket": BUCKET, "duration_s": Seconds(), "ms_since_first_open": MS},
+                                         {"recipe_id": "jira-hibernate-hhh", "files_bucket": "101-1000", "duration_s": 55.5, "ms_since_first_open": 61000},
+                                         note="`recipe_id` says which built-in example you ran (a fixed list), never your sites or queries. Sent once per install."),
     "first_own_sync_completed": Event("MD-231, M1: the first sync of the person's own source (not the bundled sample) that wrote files", ("engine",),
-                                      {"source_type": SOURCE_TYPE, "files_bucket": BUCKET, "duration_s": Seconds(), "ms_since_first_open": MS},
-                                      {"source_type": "jira", "files_bucket": "11-100", "duration_s": 12.4, "ms_since_first_open": 241000}),
+                                      {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE_LOGIN_ONLY, "files_bucket": BUCKET, "duration_s": Seconds(), "ms_since_first_open": MS},
+                                      {"source_type": "jira", "auth_mode": "login", "files_bucket": "11-100", "duration_s": 12.4, "ms_since_first_open": 241000},
+                                      note="It is not sent for a sync that reads a public Jira site with no login (auth_mode `public`). The first later sync of your own source then counts instead."),
     "error_shown": Event("Friction hotspots; the page's own scripts: ui_area `page`, error_class `script_missing` and which script did not load (MD-217, H-SCRIPT-1: does it happen to outside users)",
                          ("ui",), {"ui_area": UI_AREA, "error_class": ERROR_CLASS, "script": SCRIPT},
                          {"ui_area": "page", "error_class": "script_missing", "script": "firstrun"}),
@@ -217,15 +227,15 @@ EVENTS: dict[str, Event] = {
     "agent_snippet_copied": Event("The aha step was taken", ("ui",), {"agent": AGENT}, {"agent": "claude_code"}),
     "agent_read": Event("R4+ aha and R5 habit: reads through MCP per day (a count, nothing else)", ("mcp",), {"reads_count": Count()},
                         {"reads_count": 7}),
-    "first_agent_read": Event("Did the agent ever read the files, and how long after the first sync", ("mcp",), {"ms_since_first_sync": MS},
-                              {"ms_since_first_sync": 340000}),
+    "first_agent_read": Event("Did the agent ever read the files, and how long after the first sync", ("mcp",), {"ms_since_first_sync": MS, "recipe_id": RECIPE_ID_READ},
+                              {"ms_since_first_sync": 340000, "recipe_id": "none"}),
     "sync_completed": Event("'Always current' works", ("engine",),
-                            {"trigger": TRIGGER, "source_type": SOURCE_TYPE, "changed_bucket": BUCKET, "deleted_bucket": BUCKET,
+                            {"trigger": TRIGGER, "source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "recipe_id": RECIPE_ID, "changed_bucket": BUCKET, "deleted_bucket": BUCKET,
                              "duration_s": Seconds(), "is_sample": Flag()},
-                            {"trigger": "manual", "source_type": "jira", "changed_bucket": "1-10", "deleted_bucket": "0", "duration_s": 3.2,
+                            {"trigger": "manual", "source_type": "jira", "auth_mode": "login", "recipe_id": "none", "changed_bucket": "1-10", "deleted_bucket": "0", "duration_s": 3.2,
                              "is_sample": False}),
-    "sync_failed": Event("Reliability as users see it", ("engine",), {"error_class": ERROR_CLASS, "source_type": SOURCE_TYPE, "is_sample": Flag()},
-                         {"error_class": "network", "source_type": "jira", "is_sample": False}),
+    "sync_failed": Event("Reliability as users see it", ("engine",), {"error_class": ERROR_CLASS, "source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "recipe_id": RECIPE_ID, "is_sample": Flag()},
+                         {"error_class": "network", "source_type": "jira", "auth_mode": "login", "recipe_id": "none", "is_sample": False}),
     "front_matter_warning": Event("H-FM-3: how common invalid hand-written front matter is in real folders (MD-201: a count of files, no path, no name, no line)", ("engine",),
                                   {"files_count": Count(1000)}, {"files_count": 1}),
     "guard_triggered": Event("Big-change friction", ("engine",), {"cause": GUARD_CAUSE}, {"cause": "unknown"}),
@@ -235,17 +245,17 @@ EVENTS: dict[str, Event] = {
     "activity_viewed": Event("Do users check state", ("ui",), {"entry_point": ENTRY_POINT}, {"entry_point": "home"}),
     "item_reason_viewed": Event("'Why is my file missing?' volume", ("ui",), {"reason": ITEM_REASON}, {"reason": "deleted_in_source"}, "MD-122"),
     # --- C. expansion (R6) ---
-    "source_added": Event("Expansion", ("ui", "cli"), {"source_type": SOURCE_TYPE, "n_sources": Count(1000), "is_sample": Flag()},
-                          {"source_type": "folder", "n_sources": 2, "is_sample": False}),
+    "source_added": Event("Expansion", ("ui", "cli"), {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "recipe_id": RECIPE_ID, "n_sources": Count(1000), "is_sample": Flag()},
+                          {"source_type": "jira", "auth_mode": "login", "recipe_id": "none", "n_sources": 2, "is_sample": False}),
     "source_toggled": Event("Expansion", ("ui", "cli"), {"state": ON_OFF}, {"state": "off"}),
     "source_removed": Event("Expansion", ("ui", "cli"), {"age_bucket": AGE_BUCKET}, {"age_bucket": "<7d"}),
-    "pipeline_created": Event("Expansion", ("ui", "cli"), {"n_pipelines": Count(1000), "is_sample": Flag()},
-                             {"n_pipelines": 1, "is_sample": False}),
+    "pipeline_created": Event("Expansion", ("ui", "cli"), {"n_pipelines": Count(1000), "recipe_id": RECIPE_ID, "is_sample": Flag()},
+                             {"n_pipelines": 1, "recipe_id": "none", "is_sample": False}),
     # --- D. the one intent event instrumented now ---
     "source_scope_edited": Event("Do users narrow scope today? (cheapest demand evidence)", ("ui", "cli"),
-                                 {"source_type": SOURCE_TYPE, "kind": SCOPE_KIND, "fields_used": QUERY_FIELDS, "clause_count": Count(1000),
+                                 {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "kind": SCOPE_KIND, "fields_used": QUERY_FIELDS, "clause_count": Count(1000),
                                   "pattern_count": Count(1000), "uses_order_by": Flag()},
-                                 {"source_type": "jira", "kind": "jql", "fields_used": ["status", "updated"], "clause_count": 2,
+                                 {"source_type": "jira", "auth_mode": "login", "kind": "jql", "fields_used": ["status", "updated"], "clause_count": 2,
                                   "pattern_count": 0, "uses_order_by": True}),
     "jira_project_pick": Event("Does the project picker cut the Jira step? (MD-141: method and a bucket, never a key, name or query)", ("ui",),
                                {"method": PICK_METHOD, "count_bucket": BUCKET}, {"method": "picker", "count_bucket": "1-10"}),

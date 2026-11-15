@@ -35,9 +35,9 @@ def jira(label="j", jql="project = ACME-SECRET"):
 def test_creating_a_pipeline_reports_it_its_sources_and_its_target(brain, make_source, sharing):
     a, b = make_source("a", {"1.md": "1"}), make_source("b", {"2.md": "2"})
     create_pipeline(brain, Pipeline.new("p", [str(a), str(b)]))
-    assert props("pipeline_created") == [{"n_pipelines": 1, "is_sample": False}]
-    assert props("source_added") == [{"source_type": "folder", "n_sources": 2, "is_sample": False}] * 2
-    assert props("source_connected") == [{"source_type": "folder", "is_sample": False}] * 2
+    assert props("pipeline_created") == [{"n_pipelines": 1, "recipe_id": "none", "is_sample": False}]
+    assert props("source_added") == [{"source_type": "folder", "recipe_id": "none", "n_sources": 2, "is_sample": False}] * 2
+    assert props("source_connected") == [{"source_type": "folder", "recipe_id": "none", "is_sample": False}] * 2
     assert props("target_connected") == [{"target_type": "folder"}]
 
 
@@ -73,7 +73,7 @@ def test_a_github_destination_is_reported_as_github():
 def test_a_jira_query_at_creation_is_reported_as_a_scope_with_field_names_only(sharing):
     usage_hooks.pipeline_created(1, Pipeline("p", [jira(jql='project = ACME-SECRET AND status = "Open" ORDER BY updated')]))
     (scope,) = props("source_scope_edited")
-    assert scope == {"source_type": "jira", "kind": "jql", "fields_used": ["project", "status"], "clause_count": 2, "uses_order_by": True}
+    assert scope == {"source_type": "jira", "auth_mode": "login", "kind": "jql", "fields_used": ["project", "status"], "clause_count": 2, "uses_order_by": True}
     assert "ACME-SECRET" not in json.dumps(queued()) and SITE not in json.dumps(queued())
 
 
@@ -125,7 +125,7 @@ def test_changing_a_jira_query_reports_a_scope_edit_and_a_changed_target_reports
     old = Pipeline("p", [jira(jql="project = A")])
     new = Pipeline("p", [jira(jql="project = A AND labels = secret")], destination={"type": "github", "repo": "o/r", "branch": "main", "credential": "vault:x"})
     usage_hooks.pipeline_updated(old, new)
-    assert props("source_scope_edited") == [{"source_type": "jira", "kind": "jql", "fields_used": ["labels", "project"], "clause_count": 2,
+    assert props("source_scope_edited") == [{"source_type": "jira", "auth_mode": "login", "kind": "jql", "fields_used": ["labels", "project"], "clause_count": 2,
                                              "uses_order_by": False}]
     assert props("target_connected") == [{"target_type": "github"}]
 

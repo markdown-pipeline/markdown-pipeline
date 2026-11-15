@@ -124,8 +124,8 @@ def test_a_successful_credential_check_reports_started_then_completed(brain, fak
     with running_ui(brain) as ui:
         ui.post("/api/jira-test", DRAFT_SOURCE)
     assert [(e["event"], own(e)) for e in queued("source_auth_started", "source_auth_completed", "source_auth_failed")] == [
-        ("source_auth_started", {"source_type": "jira", "auth_method": "token"}),
-        ("source_auth_completed", {"source_type": "jira", "auth_method": "token"})]
+        ("source_auth_started", {"source_type": "jira", "auth_mode": "login", "auth_method": "token"}),
+        ("source_auth_completed", {"source_type": "jira", "auth_mode": "login", "auth_method": "token"})]
 
 
 @pytest.mark.parametrize("override,error_class", [({"token_ref": "env:NOT_SET_ANYWHERE"}, "auth"), ({"jql": "project = = ="}, "validation"),

@@ -12,7 +12,7 @@ from .usage_events import EVENTS, AssetName, Count, EmailAddress, Enum, EnumList
 GROUPS: list[tuple[str, tuple[str, ...]]] = [
     ("A. Activation path and friction (time to value)", (
         "app_opened", "consent_decided", "onboarding_step_viewed", "onboarding_step_completed", "source_add_started", "source_auth_started",
-        "source_auth_completed", "source_auth_failed", "source_connected", "target_connected", "dry_run_viewed", "first_sync_completed", "first_own_sync_completed",
+        "source_auth_completed", "source_auth_failed", "source_connected", "target_connected", "dry_run_viewed", "first_sync_completed", "first_own_sync_completed", "first_recipe_sync_completed",
         "error_shown", "help_opened", "session_ended_before_first_sync", "secret_store_used")),
     ("B. Value and habit", (
         "agent_snippet_copied", "agent_read", "first_agent_read", "sync_completed", "sync_failed", "front_matter_warning", "guard_triggered", "guard_resolved",
@@ -67,7 +67,7 @@ def _payload(name: str) -> str:
 
 def _section(name: str) -> str:
     event = EVENTS[name]
-    lines = [f"### `{name}`", "", f"{event.purpose}. Emitted from: {', '.join(event.surfaces)}."]
+    lines = [f"### `{name}`", "", f"{event.purpose}. Emitted from: {', '.join(event.surfaces)}." + (f" {event.note}" if event.note else "")]
     if event.ships_with:
         lines += ["", f"Not emitted yet: ships with {event.ships_with}."]
     if name in EXPLICIT_SENDS:
@@ -114,6 +114,11 @@ are shown exactly as sent in Settings → Privacy & usage and by `mdpipeline usa
 | `$geoip_disable` | always `true`: tells PostHog not to work out a country or city (MD-232) |
 | `timestamp` | when the event happened (an `agent_read` day count is dated to that day) |
 | `uuid` | unique per event |
+
+## `auth_mode` on events that carry `source_type`
+
+For a Jira source, these events also carry `auth_mode`: `login` (your Atlassian email and API token) or `public` (a public Jira Cloud site read
+with no login). It is one of those two words and never a site name or address. Folder-only pipelines send no `auth_mode`. If a pipeline has more than one Jira source, it is `public` only when every one of them is read with no login.
 
 ## Not events of this list
 

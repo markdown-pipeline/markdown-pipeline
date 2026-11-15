@@ -34,6 +34,11 @@ are shown exactly as sent in Settings → Privacy & usage and by `mdpipeline usa
 | `timestamp` | when the event happened (an `agent_read` day count is dated to that day) |
 | `uuid` | unique per event |
 
+## `auth_mode` on events that carry `source_type`
+
+For a Jira source, these events also carry `auth_mode`: `login` (your Atlassian email and API token) or `public` (a public Jira Cloud site read
+with no login). It is one of those two words and never a site name or address. Folder-only pipelines send no `auth_mode`. If a pipeline has more than one Jira source, it is `public` only when every one of them is read with no login.
+
 ## Not events of this list
 
 - **`consent_outcome`** (`share` / `decline`, never `no_answer`): the one-time count of an install's first answer, sent only by a usage store
@@ -169,6 +174,7 @@ Which source people reach for first. Emitted from: ui.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
 | `entry_point` | `empty_state` / `editor` / `onboarding` / `home` / `activity` / `view` / `settings` / `other` |
 
 Example payload as sent:
@@ -181,6 +187,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "auth_mode": "login",
     "entry_point": "empty_state",
     "app_version": "1.2.3",
     "deployment": "local",
@@ -199,6 +206,7 @@ Credential friction. Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
 | `auth_method` | `token` / `oauth` |
 
 Example payload as sent:
@@ -211,6 +219,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "auth_mode": "login",
     "auth_method": "token",
     "app_version": "1.2.3",
     "deployment": "local",
@@ -229,6 +238,7 @@ Credential friction. Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
 | `auth_method` | `token` / `oauth` |
 
 Example payload as sent:
@@ -241,6 +251,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "auth_mode": "login",
     "auth_method": "token",
     "app_version": "1.2.3",
     "deployment": "local",
@@ -259,6 +270,7 @@ Credential friction. Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
 | `auth_method` | `token` / `oauth` |
 | `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `script_missing` / `unknown` |
 
@@ -272,6 +284,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "auth_mode": "login",
     "auth_method": "token",
     "error_class": "auth",
     "app_version": "1.2.3",
@@ -291,6 +304,8 @@ R4: a source is connected. Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `none` |
 | `is_sample` | `true` / `false` |
 
 Example payload as sent:
@@ -303,6 +318,8 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "auth_mode": "login",
+    "recipe_id": "none",
     "is_sample": false,
     "app_version": "1.2.3",
     "deployment": "local",
@@ -379,6 +396,8 @@ Time to first file. Emitted from: engine.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `none` |
 | `files_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
 | `duration_s` | seconds, 0 to 1,000,000, one decimal |
 | `ms_since_first_open` | whole number, 0 to 3,000,000,000 |
@@ -394,6 +413,8 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "auth_mode": "login",
+    "recipe_id": "none",
     "files_bucket": "11-100",
     "duration_s": 12.4,
     "ms_since_first_open": 241000,
@@ -410,11 +431,12 @@ Example payload as sent:
 
 ### `first_own_sync_completed`
 
-MD-231, M1: the first sync of the person's own source (not the bundled sample) that wrote files. Emitted from: engine.
+MD-231, M1: the first sync of the person's own source (not the bundled sample) that wrote files. Emitted from: engine. It is not sent for a sync that reads a public Jira site with no login (auth_mode `public`). The first later sync of your own source then counts instead.
 
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` |
 | `files_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
 | `duration_s` | seconds, 0 to 1,000,000, one decimal |
 | `ms_since_first_open` | whole number, 0 to 3,000,000,000 |
@@ -429,9 +451,44 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "auth_mode": "login",
     "files_bucket": "11-100",
     "duration_s": 12.4,
     "ms_since_first_open": 241000,
+    "app_version": "1.2.3",
+    "deployment": "local",
+    "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
+    "is_internal": false,
+    "$process_person_profile": false,
+    "$geoip_disable": true
+  }
+}
+```
+
+### `first_recipe_sync_completed`
+
+MD-238, EXP-1112-RC1 Y: a stranger's first sync of a built-in recipe that wrote files (never counted as first_own_sync_completed). Emitted from: engine. `recipe_id` says which built-in example you ran (a fixed list), never your sites or queries. Sent once per install.
+
+| Property | Allowed values |
+|---|---|
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `none` |
+| `files_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
+| `duration_s` | seconds, 0 to 1,000,000, one decimal |
+| `ms_since_first_open` | whole number, 0 to 3,000,000,000 |
+
+Example payload as sent:
+
+```json
+{
+  "event": "first_recipe_sync_completed",
+  "distinct_id": "7f3c1a52-0d4e-4b8a-9c21-5e6f0a1b2c3d",
+  "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
+  "timestamp": "2026-10-08T09:15:02Z",
+  "properties": {
+    "recipe_id": "jira-hibernate-hhh",
+    "files_bucket": "101-1000",
+    "duration_s": 55.5,
+    "ms_since_first_open": 61000,
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -624,6 +681,7 @@ Did the agent ever read the files, and how long after the first sync. Emitted fr
 | Property | Allowed values |
 |---|---|
 | `ms_since_first_sync` | whole number, 0 to 3,000,000,000 |
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `mixed` / `none` |
 
 Example payload as sent:
 
@@ -635,6 +693,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "ms_since_first_sync": 340000,
+    "recipe_id": "none",
     "app_version": "1.2.3",
     "deployment": "local",
     "session_id": "9e1d4c7a2b6f4e8d8a3c5b7f1e2d4a6c",
@@ -653,6 +712,8 @@ Example payload as sent:
 |---|---|
 | `trigger` | `schedule` / `manual` |
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `none` |
 | `changed_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
 | `deleted_bucket` | `0` / `1-10` / `11-100` / `101-1000` / `1000+` |
 | `duration_s` | seconds, 0 to 1,000,000, one decimal |
@@ -669,6 +730,8 @@ Example payload as sent:
   "properties": {
     "trigger": "manual",
     "source_type": "jira",
+    "auth_mode": "login",
+    "recipe_id": "none",
     "changed_bucket": "1-10",
     "deleted_bucket": "0",
     "duration_s": 3.2,
@@ -691,6 +754,8 @@ Reliability as users see it. Emitted from: engine.
 |---|---|
 | `error_class` | `auth` / `rate_limit` / `network` / `guard_blocked` / `target_write` / `validation` / `probe_rejected` / `script_missing` / `unknown` |
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `none` |
 | `is_sample` | `true` / `false` |
 
 Example payload as sent:
@@ -704,6 +769,8 @@ Example payload as sent:
   "properties": {
     "error_class": "network",
     "source_type": "jira",
+    "auth_mode": "login",
+    "recipe_id": "none",
     "is_sample": false,
     "app_version": "1.2.3",
     "deployment": "local",
@@ -897,6 +964,8 @@ Expansion. Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `none` |
 | `n_sources` | whole number, 0 to 1,000 |
 | `is_sample` | `true` / `false` |
 
@@ -909,7 +978,9 @@ Example payload as sent:
   "uuid": "0b9c6f1e-2a47-4d35-8f10-6c7e9d2a4b58",
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
-    "source_type": "folder",
+    "source_type": "jira",
+    "auth_mode": "login",
+    "recipe_id": "none",
     "n_sources": 2,
     "is_sample": false,
     "app_version": "1.2.3",
@@ -985,6 +1056,7 @@ Expansion. Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `n_pipelines` | whole number, 0 to 1,000 |
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `none` |
 | `is_sample` | `true` / `false` |
 
 Example payload as sent:
@@ -997,6 +1069,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "n_pipelines": 1,
+    "recipe_id": "none",
     "is_sample": false,
     "app_version": "1.2.3",
     "deployment": "local",
@@ -1018,6 +1091,7 @@ Do users narrow scope today? (cheapest demand evidence). Emitted from: ui, cli.
 | Property | Allowed values |
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
+| `auth_mode` | `login` / `public` |
 | `kind` | `jql` / `glob` / `project` |
 | `fields_used` | list of: `status` / `priority` / `issuetype` / `updated` / `created` / `labels` / `component` / `assignee` / `project` / `sprint` / `custom` |
 | `clause_count` | whole number, 0 to 1,000 |
@@ -1034,6 +1108,7 @@ Example payload as sent:
   "timestamp": "2026-10-08T09:15:02Z",
   "properties": {
     "source_type": "jira",
+    "auth_mode": "login",
     "kind": "jql",
     "fields_used": [
       "status",

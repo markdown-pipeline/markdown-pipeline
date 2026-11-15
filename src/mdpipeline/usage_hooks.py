@@ -39,6 +39,29 @@ def source_type_of(pipeline) -> str:
     return kinds.pop() if len(kinds) == 1 else "other"
 
 
+def auth_mode_props(sources) -> dict:
+    """MD-236: ``{"auth_mode": "login" | "public"}`` when Jira is involved, else ``{}``. ``public`` only when every Jira source is read with no login."""
+    jira = [s for s in sources if s.type == "jira"]
+    if not jira:
+        return {}
+    return {"auth_mode": "public" if all(s.options.get("auth_mode") == "public" for s in jira) else "login"}
+
+
+RECIPE_IDS = ("jira-ecosystem-frge", "jira-hibernate-hhh", "jira-sakaiproject-sak")
+
+
+def recipe_id_of(sources) -> str:
+    """MD-238: the built-in recipe a pipeline's sources came from (the marker MD-237 puts on the source), else ``none``.
+
+    Only an id on the fixed list is ever returned: a marker holding anything else (a host, a project, text) is ``none``. Several different recipes
+    in one pipeline cannot happen through ``mdpipeline recipe``; if a hand-edited config has them, the first listed is used."""
+    for s in sources:
+        marker = (s.options or {}).get("recipe_id")
+        if marker in RECIPE_IDS:
+            return marker
+    return "none"
+
+
 _CLASS_OF_CATEGORY = {"auth": "auth", "vault-locked": "auth", "vault-unsafe": "auth", "rate-limited": "rate_limit", "network": "network",
                       "protected-branch": "target_write", "head-moved": "target_write", "concurrent-change": "target_write",
                       "credential-conflict": "validation",
@@ -89,18 +112,22 @@ def sync_finished(res, pipeline) -> None:
         if res.dry_run:
             return
         kind, counts, is_sample = source_type_of(pipeline), res.counts(), is_sample_pipeline(pipeline)
+        mode = {**auth_mode_props(pipeline.sources), "recipe_id": (recipe := recipe_id_of(pipeline.sources))}
         seconds = round(res.duration_ms / 1000, 1)
         if res.result in ("ok", "conflicts"):
-            usage.emit("sync_completed", trigger=trigger_class(res.trigger), source_type=kind,
+            usage.emit("sync_completed", trigger=trigger_class(res.trigger), source_type=kind, **mode,
                        changed_bucket=bucket(sum(counts.get(k, 0) for k in COUNTED)), deleted_bucket=bucket(counts.get("deleted", 0)),
                        duration_s=seconds, is_sample=is_sample)
             files = sum(counts.get(k, 0) for k in FILES)
             store = usage.UsageStore()
             if files > 0 and store.note_first_sync():          # the clock is local and runs even without consent
-                usage.emit("first_sync_completed", source_type=kind, files_bucket=bucket(files), duration_s=seconds,
+                usage.emit("first_sync_completed", source_type=kind, **mode, files_bucket=bucket(files), duration_s=seconds,
                            ms_since_first_open=store.ms_since_first_open(), is_sample=is_sample)
-            if files > 0 and not is_sample and store.sharing and store.note_first_own_sync():       # MD-231: M1, the first sync of the person's own source
-                usage.emit("first_own_sync_completed", source_type=kind, files_bucket=bucket(files), duration_s=seconds,
+            if files > 0 and not is_sample and recipe == "none" and mode.get("auth_mode") != "public" and store.sharing and store.note_first_own_sync():       # MD-231: M1, the first sync of the person's own source; MD-236 AC11: a public site is not (no stamp either)
+                usage.emit("first_own_sync_completed", source_type=kind, **mode, files_bucket=bucket(files), duration_s=seconds,
+                           ms_since_first_open=store.ms_since_first_open())
+            if files > 0 and recipe != "none" and store.sharing and store.note_first_recipe_sync():       # MD-238: Y, a stranger's first recipe sync; never M1
+                usage.emit("first_recipe_sync_completed", recipe_id=recipe, files_bucket=bucket(files), duration_s=seconds,
                            ms_since_first_open=store.ms_since_first_open())
             skipped_for_front_matter = len(res.plan.front_matter_warnings) if res.plan else 0
             if skipped_for_front_matter:          # MD-201 AC3: only how many files, never which
@@ -110,10 +137,10 @@ def sync_finished(res, pipeline) -> None:
         elif res.result == "error" and _locked(res):
             usage.emit("notice_shown", kind=_locked(res))      # MD-161: waiting for the person to unlock is not a failure; the reliability numbers stay clean
         elif res.result == "error":
-            usage.emit("sync_failed", error_class=_error_class_of_result(res), source_type=kind, is_sample=is_sample)
+            usage.emit("sync_failed", error_class=_error_class_of_result(res), source_type=kind, **mode, is_sample=is_sample)
         elif res.result == "blocked":
             usage.emit("guard_triggered", cause="unknown")
-            usage.emit("sync_failed", error_class="guard_blocked", source_type=kind, is_sample=is_sample)
+            usage.emit("sync_failed", error_class="guard_blocked", source_type=kind, **mode, is_sample=is_sample)
     except Exception:                   # noqa: BLE001 - reporting must never change or fail a sync
         return
 
@@ -171,18 +198,19 @@ def _destination_key(pipeline) -> tuple:
 def _emit_jql_scope(source) -> None:
     jql = (source.options or {}).get("jql", "")
     if source.type == "jira" and jql.strip():
-        usage.emit("source_scope_edited", source_type="jira", kind="jql", **jql_profile(jql))
+        usage.emit("source_scope_edited", source_type="jira", **auth_mode_props([source]), kind="jql", **jql_profile(jql))
 
 
 def _emit_glob_scope(pipeline) -> None:
     if list(pipeline.include) != list(DEFAULT_INCLUDE) or list(pipeline.exclude) != list(DEFAULT_EXCLUDE):
-        usage.emit("source_scope_edited", source_type=source_type_of(pipeline), kind="glob",
+        usage.emit("source_scope_edited", source_type=source_type_of(pipeline), **auth_mode_props(pipeline.sources), kind="glob",
                    pattern_count=len(pipeline.include) + len(pipeline.exclude))
 
 
 def _source_added(source, total: int, is_sample: bool) -> None:
-    usage.emit("source_added", source_type=_kind_of(source), n_sources=total, is_sample=is_sample)
-    usage.emit("source_connected", source_type=_kind_of(source), is_sample=is_sample)
+    recipe = recipe_id_of([source])
+    usage.emit("source_added", source_type=_kind_of(source), **auth_mode_props([source]), recipe_id=recipe, n_sources=total, is_sample=is_sample)
+    usage.emit("source_connected", source_type=_kind_of(source), **auth_mode_props([source]), recipe_id=recipe, is_sample=is_sample)
     _emit_jql_scope(source)
 
 
@@ -190,7 +218,7 @@ def pipeline_created(n_pipelines: int, pipeline) -> None:
     """A pipeline was saved (CLI or UI): the pipeline, each of its sources, its target and any narrowed scope."""
     try:
         is_sample = is_sample_pipeline(pipeline)
-        usage.emit("pipeline_created", n_pipelines=n_pipelines, is_sample=is_sample)
+        usage.emit("pipeline_created", n_pipelines=n_pipelines, recipe_id=recipe_id_of(pipeline.sources), is_sample=is_sample)
         for source in pipeline.sources:
             _source_added(source, len(pipeline.sources), is_sample)
         usage.emit("target_connected", target_type=target_type_of(pipeline))
@@ -333,14 +361,15 @@ def _refresh_login_item() -> None:
         return
 
 
-def jira_checked(ok: bool, category: str = "") -> None:
+def jira_checked(ok: bool, category: str = "", public: bool = False) -> None:
     """The user tested a Jira connection (UI or CLI): started, then completed or failed (a class, never the message)."""
     try:
-        usage.emit("source_auth_started", source_type="jira", auth_method="token")
+        mode = {"auth_mode": "public" if public else "login"}
+        usage.emit("source_auth_started", source_type="jira", auth_method="token", **mode)
         if ok:
-            usage.emit("source_auth_completed", source_type="jira", auth_method="token")
+            usage.emit("source_auth_completed", source_type="jira", auth_method="token", **mode)
         else:
-            usage.emit("source_auth_failed", source_type="jira", auth_method="token", error_class=error_class_of(category))
+            usage.emit("source_auth_failed", source_type="jira", auth_method="token", error_class=error_class_of(category), **mode)
     except Exception:                   # noqa: BLE001
         return
 

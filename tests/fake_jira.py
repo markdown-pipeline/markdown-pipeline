@@ -62,6 +62,8 @@ class FakeJira:
         self._pages_served = 0
         self._cursors: dict[str, int] = {}
         self._projects: dict[str, str] = {}
+        self.public = False                          # MD-236: a public site answers requests with NO Authorization header with real data
+        self.auth_headers: list[str | None] = []     # the Authorization header of every request (None when absent)
 
     # -- scripting -------------------------------------------------------------------
     def _tick(self) -> datetime:
@@ -174,6 +176,11 @@ class FakeJira:
                 f["times"] -= 1
                 return self._reply(f["status"], {"errorMessages": [f["message"]]})
         auth = {k.lower(): v for k, v in headers.items()}.get("authorization", "")
+        self.auth_headers.append(auth or None)
+        if self.public and not auth:                 # anonymous read of a public site: everything but /myself is served
+            if parts.path == "/rest/api/3/myself":
+                return self._reply(401, {"message": "Client must be authenticated to access this resource."})
+            auth = "Basic " + base64.b64encode(f"{self.email}:{self.token}".encode()).decode()
         expected = "Basic " + base64.b64encode(f"{self.email}:{self.token}".encode()).decode()
         if auth != expected:
             # real Jira Cloud (MD-174, measured 2026-10-22): rejected basic auth is served as an ANONYMOUS request, so search, the
@@ -230,6 +237,9 @@ class FakeJira:
             raise ValueError(f"The query is not valid near '{clause}'.")
         field, op, raw = m.group(1).lower(), re.sub(r"\s+", " ", m.group(2).lower()), m.group(3).strip()
         if field == "updated":
+            dated = re.fullmatch(r'"(\d{4}-\d{2}-\d{2})"', raw)      # MD-237: a pinned window, real Jira takes "yyyy-MM-dd"
+            if op == ">=" and dated:
+                return record["updated"] >= datetime.strptime(dated.group(1), "%Y-%m-%d").replace(tzinfo=timezone.utc)
             if op != ">=" or not re.fullmatch(r"-\d+d", raw):
                 raise ValueError(f"Unsupported updated clause '{clause}'.")
             if int(raw[1:-1]) >= 36500:          # real Jira Cloud (2026-10-16): -36500d is invalid, -3650d is fine

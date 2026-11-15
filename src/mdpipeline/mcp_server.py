@@ -24,6 +24,7 @@ from .install_info import command_prefix
 from .log import ActivityLog
 from .schedulestore import SchedulerStore
 from .status import brain_status
+from .usage_hooks import recipe_id_of
 
 INSTRUCTIONS = (
     "Search, read and list the Markdown knowledge in this brain (the files its pipelines wrote, plus raw/ and wiki/). Every result carries "
@@ -35,6 +36,34 @@ INSTRUCTIONS = (
 # MD-213: what each tool changes, for the agent and for directory listings. The three that read files only read the brain; none of them reaches the network.
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 SYNC_EFFECTS = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)      # writes files inside the brain, deletes only what a source deleted
+
+def read_recipe_id(brain: Brain, pipeline_names) -> str:
+    """MD-238 AC3: the ``recipe_id`` for ``first_agent_read``, from the names of the pipelines a read touched. Never raises.
+
+    ``none`` when nothing was touched or none is a recipe; a recipe's id when every pipeline touched is that one recipe; ``mixed`` otherwise
+    (more than one recipe, or a recipe and a non-recipe pipeline). Only the allowlisted id leaves: the name is just a lookup key here."""
+    try:
+        names = {n for n in pipeline_names if isinstance(n, str) and n}
+        if not names:
+            return "none"
+        by_name = {p.name: recipe_id_of(p.sources) for p in load_config(brain).pipelines}
+        ids = {by_name.get(n, "none") for n in names}
+        if ids == {"none"}:
+            return "none"
+        return ids.pop() if len(ids) == 1 else "mixed"
+    except Exception:                   # noqa: BLE001 - measurement must never break a read
+        return "none"
+
+
+def _provenance_pipelines(rows) -> list[str]:
+    """The pipeline names in the provenance of search results, list files or a read."""
+    out = []
+    for row in rows:
+        prov = row.get("provenance") if isinstance(row, dict) else None
+        if isinstance(prov, dict) and isinstance(prov.get("pipeline"), str):
+            out.append(prov["pipeline"])
+    return out
+
 
 PIPELINE_ARG = Annotated[str | None, Field(description="Name of one pipeline, exactly as `list`/`sync_status` show it. Omit it to cover every pipeline.")]
 
@@ -106,11 +135,13 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
             return setup_needed(exc)
         log = ActivityLog(brain)
         log.mcp_call("search")
-        usage.note_agent_read()          # MD-116: a count per day, nothing about what was asked
         try:
-            return {"results": search(brain, query, path_prefix, limit)}
+            results = search(brain, query, path_prefix, limit)
         except QueryError as exc:
+            usage.note_agent_read()          # MD-116: a count per day, nothing about what was asked
             raise ToolError(str(exc)) from exc
+        usage.note_agent_read(recipe_id=read_recipe_id(brain, _provenance_pipelines(results)))
+        return {"results": results}
 
     @server.tool(name="read", annotations=READ_ONLY, description="Read one Markdown file of the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools). Read-only. Returns the whole file: {path, content, provenance, size} "
                  "(provenance is the parsed source metadata, null when the file has none; size is in bytes). Errors (ToolError) for a path that does not exist, "
@@ -125,11 +156,13 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
             return setup_needed(exc)
         log = ActivityLog(brain)
         log.mcp_call("read")
-        usage.note_agent_read()          # MD-116: a count per day, nothing about what was asked
         try:
-            return read_file(brain, path)
+            result = read_file(brain, path)
         except QueryError as exc:
+            usage.note_agent_read()          # MD-116: a count per day, nothing about what was asked
             raise ToolError(str(exc)) from exc
+        usage.note_agent_read(recipe_id=read_recipe_id(brain, _provenance_pipelines([result])))
+        return result
 
     @server.tool(name="list", annotations=READ_ONLY, description="List what is in the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools), one folder level at a time. Read-only. Returns {path, folders, files}: each folder with its "
                  "count of Markdown files, each Markdown file with a provenance summary, sorted by name (at the top level: the output folders, raw/, wiki/). "
@@ -144,11 +177,13 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
             return setup_needed(exc)
         log = ActivityLog(brain)
         log.mcp_call("list")
-        usage.note_agent_read()          # MD-116: a count per day, nothing about what was asked
         try:
-            return list_path(brain, path_prefix)
+            result = list_path(brain, path_prefix)
         except QueryError as exc:
+            usage.note_agent_read()          # MD-116: a count per day, nothing about what was asked
             raise ToolError(str(exc)) from exc
+        usage.note_agent_read(recipe_id=read_recipe_id(brain, _provenance_pipelines(result.get("files", []))))
+        return result
 
     @server.tool(name="sync_status", annotations=READ_ONLY, description="How fresh is the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools)? Read-only: it never syncs and changes nothing. Per pipeline: status, last run "
                  "(time, result, counts), conflicts, big-change guard (it pauses a sync that would delete or overwrite a large share of a pipeline's files until the person approves) state and age since the last successful sync, plus the overall brain age. Every pipeline and the top level carry "
@@ -183,13 +218,17 @@ def build_server(brain: "Brain | Callable[[], Brain]") -> MCPServer:
             return setup_needed(exc)
         log = ActivityLog(brain)
         log.mcp_call("recent_changes")
-        usage.note_agent_read()          # MD-116: a count per day, nothing about what was asked
         if pipeline is not None and load_config(brain).get(pipeline) is None:
+            usage.note_agent_read()          # MD-116: a count per day, nothing about what was asked
             raise ToolError(f"No pipeline named '{pipeline}'.")
         try:
-            return changes.recent(brain, since=since, pipeline=pipeline, limit=limit)
+            result = changes.recent(brain, since=since, pipeline=pipeline, limit=limit)
         except ValueError as exc:
+            usage.note_agent_read()
             raise ToolError(str(exc)) from exc
+        touched = [pipeline] if pipeline else [i.get("pipeline") for i in result.get("items", []) if isinstance(i, dict)]
+        usage.note_agent_read(recipe_id=read_recipe_id(brain, touched))
+        return result
 
     @server.tool(name="sync", annotations=SYNC_EFFECTS, description="Refresh the brain (the folder of Markdown files Markdown Pipeline keeps current from your team's tools) now: sync one pipeline (or all pipelines when none is given) from its sources (such as Jira or a local folder) into its "
                  "output folder. This writes files inside the brain (new and changed Markdown; files that a source deleted are deleted too) and the activity log. "

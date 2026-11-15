@@ -116,6 +116,8 @@ def jira_flags(sp, adding: bool) -> None:
     g.add_argument("--jira-email", metavar="EMAIL", help="your Atlassian account email (kept in the vault), or a reference such as env:JIRA_EMAIL")
     g.add_argument("--jira-token", metavar="REF", help="a REFERENCE to the API token (vault:ID, env:NAME, keychain:SERVICE); the token itself is never an argument")
     g.add_argument("--jira-stdin", action="store_true", help="read the Jira API token from one line of standard input instead of a hidden prompt")
+    g.add_argument("--jira-public", action="store_true", help="read a PUBLIC Jira Cloud site with no login: give --jira-site and --jira-jql, and no email or token "
+                   "(the site must allow anonymous reading; this is checked first)")
     if not adding:
         g.add_argument("--replace-jira-token", action="store_true", help="enter a new API token for the Jira source named by --jira-label (checked first)")
 
@@ -315,6 +317,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--force", action="store_true", help="overwrite files edited in the brain (conflict b); never overwrites files the pipeline does not own")
     sp.add_argument("--json", action="store_true", help="print the result as JSON")
 
+    rc = sub.add_parser("recipe", help="sync a built-in public Jira project into Markdown in one command (`recipe list` shows them)",
+                        description="Run a built-in recipe: a public Jira project, read with no login, synced into a folder you can ask Claude Code about.")
+    rc.add_argument("recipe_id", metavar="ID", help="a recipe id, or `list`")
+
     ui = sub.add_parser("ui", help="open the local web UI (127.0.0.1 only)",
                         description="Start the local web UI for this brain and open it in your browser. Stop it with Ctrl+C.")
     ui.add_argument("--port", type=int, default=8765, help="port (default 8765; 0 picks a free one)")
@@ -476,21 +482,23 @@ def cmd_jira(args) -> int:
                                                                              "token_ref": source.options.get("token_ref") or "vault:v_checking"} if typed else {})})
     from . import usage_hooks
 
+    public = source.options.get("auth_mode") == "public"
+
     found, _ = check_jira_source(static_source, False)
     if found:
-        usage_hooks.jira_checked(False, "bad-input")
+        usage_hooks.jira_checked(False, "bad-input", public)
         raise UsageError(" ".join(message for _, message in found))
     try:
         info = JiraSource(source).test_connection()
     except SourceError as exc:
-        usage_hooks.jira_checked(False, exc.category)
+        usage_hooks.jira_checked(False, exc.category, public)
         err(f"Error: {exc}")
         return EXIT_RUNTIME
     except CredentialError as exc:
-        usage_hooks.jira_checked(False, "auth")
+        usage_hooks.jira_checked(False, "auth", public)
         err(f"Error: {exc}")
         return EXIT_RUNTIME
-    usage_hooks.jira_checked(True)
+    usage_hooks.jira_checked(True, "", public)
     print(f"Site:     {info['site']}\nAccount:  {info['user']}\nMatches:  {info['matches']} issues for: {source.options['jql']}\nNothing was written.")
     return EXIT_OK
 
@@ -582,7 +590,10 @@ def jira_source_from_args(args, existing: Source | None = None) -> Source | None
 
     given = {k: getattr(args, k, None) for k in JIRA_FLAG_NAMES}
     label = getattr(args, "jira_label", None)
-    if not any(given.values()) and not (label and existing) and not getattr(args, "replace_jira_token", False):
+    public = bool(getattr(args, "jira_public", False))
+    if public and (given["jira_email"] or given["jira_token"] or getattr(args, "jira_stdin", False) or getattr(args, "replace_jira_token", False)):
+        raise UsageError("--jira-public means no login: don't give --jira-email, --jira-token, --jira-stdin or --replace-jira-token with it.")
+    if not any(given.values()) and not public and not (label and existing) and not getattr(args, "replace_jira_token", False):
         if label:
             raise UsageError("--jira-label needs the other Jira flags: --jira-site, --jira-jql, --jira-email.")
         return None
@@ -590,6 +601,10 @@ def jira_source_from_args(args, existing: Source | None = None) -> Source | None
     for flag, key in (("jira_site", "site"), ("jira_jql", "jql"), ("jira_token", "token_ref")):
         if given[flag] is not None:
             base[key] = given[flag]
+    if public:                                    # MD-236: no email, no token, nothing for the vault
+        base["auth_mode"] = "public"
+        for key in ("email_ref", "token_ref", "_email", "_token"):
+            base.pop(key, None)
     if given["jira_email"] is not None:
         if is_reference(given["jira_email"]):
             base["email_ref"] = given["jira_email"]
@@ -598,7 +613,7 @@ def jira_source_from_args(args, existing: Source | None = None) -> Source | None
         else:
             raise UsageError("--jira-email takes your Atlassian email address (or a reference such as env:JIRA_EMAIL).")
     missing = [f"--{f.replace('_', '-')}" for f, k in (("jira_site", "site"), ("jira_jql", "jql")) if not base.get(k)]
-    if not (base.get("email_ref") or base.get("_email")):
+    if base.get("auth_mode") != "public" and not (base.get("email_ref") or base.get("_email")):
         missing.append("--jira-email")
     if missing and not existing:
         raise UsageError("A Jira source needs " + ", ".join(missing) + ".")
@@ -608,6 +623,8 @@ def jira_source_from_args(args, existing: Source | None = None) -> Source | None
 
 def ask_jira_token(args, source: Source, replacing: bool = False) -> None:
     """A Jira source without a token reference gets its token from a hidden prompt or one line of stdin (never an argument)."""
+    if source.options.get("auth_mode") == "public":
+        return
     if replacing or not (source.options.get("token_ref") or source.options.get("_token")):
         source.options["_token"] = read_secret("Jira API token (typing is hidden)", args.jira_stdin, "--jira-stdin")
 
@@ -1326,6 +1343,20 @@ def exit_for(results: list[SyncResult]) -> int:
     return worst
 
 
+def cmd_recipe(args) -> int:
+    from . import recipes
+    from .recipe_run import run_recipe
+
+    cmd = command_prefix()
+    if args.recipe_id == "list":
+        print(recipes.listing(cmd))
+        return EXIT_OK
+    if args.recipe_id not in recipes.RECIPES:
+        print(recipes.listing(cmd))
+        raise UsageError(f'There\'s no recipe called "{args.recipe_id}". Pick one from the list above.')
+    return run_recipe(args, recipes.RECIPES[args.recipe_id], cmd)
+
+
 def cmd_sync(args) -> int:
     brain = resolve_brain(args)
     if not args.pipeline and not args.all:
@@ -1859,6 +1890,8 @@ def _main(args) -> int:
             return cmd_github_app(args)
         if args.command == "sync":
             return cmd_sync(args)
+        if args.command == "recipe":
+            return cmd_recipe(args)
         if args.command == "ui":
             return cmd_ui(args)
         if args.command == "start":

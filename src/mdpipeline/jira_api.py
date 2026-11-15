@@ -67,8 +67,12 @@ def urllib_transport(method: str, url: str, headers: dict, body: bytes | None, *
 
 
 class JiraApi:
-    def __init__(self, site: str, email: "str | Callable[[], str]", token: "str | Callable[[], str]", *, transport: Transport | None = None,
-                 sleep: Callable[[float], None] | None = None) -> None:
+    def __init__(self, site: str, email: "str | Callable[[], str] | None" = None, token: "str | Callable[[], str] | None" = None, *,
+                 public: bool = False, transport: Transport | None = None, sleep: Callable[[float], None] | None = None) -> None:
+        """``public`` (MD-236): read a public site with NO login: no Authorization header, no email or token, and a public-site check
+        replaces ``/myself``."""
+        self.public = public
+        self._public_count: int | None = None
         self.host = site_host(site)
         self.site = f"https://{self.host}"
         self._email_source, self._token_source = email, token
@@ -90,7 +94,9 @@ class JiraApi:
         if not any(m == method and rx.match(path) for m, rx in ALLOWED):
             raise ValueError(f"the Jira connector is read-only: {method} {path} is not allowed")
         url = f"{self.site}{path}" + (("?" + urlencode(query)) if query else "")
-        headers = {"Authorization": f"Basic {self._auth()}", "Accept": "application/json", "User-Agent": "mdpipeline"}
+        headers = {"Accept": "application/json", "User-Agent": "mdpipeline"}
+        if not self.public:
+            headers["Authorization"] = f"Basic {self._auth()}"
         data = json.dumps(body).encode() if body is not None else None
         if data is not None:
             headers["Content-Type"] = "application/json"
@@ -104,6 +110,8 @@ class JiraApi:
             except Exception as exc:               # network failure: never include request details (the headers hold the credentials)
                 raise SourceError(f"Could not reach {self.host} ({type(exc).__name__}). Check your network and try again.", "network") from None
             if status == 429:
+                if attempt == MAX_RETRIES and self.public:      # MD-236 AC5, wording from MM-180
+                    raise SourceError(f"{self.host} is limiting requests right now. Wait a few minutes, then run the same command again.", "rate-limited")
                 if attempt == MAX_RETRIES:
                     raise SourceError("Jira rate limit reached and it did not clear after several waits. Nothing was changed; try again later.", "rate-limited")
                 lower = {k.lower(): v for k, v in (resp_headers or {}).items()}
@@ -127,6 +135,8 @@ class JiraApi:
             if payload is None and raw:
                 raise SourceError("Jira answered with an empty or invalid body.", "malformed")
             return payload
+        if self.public and status in (401, 403):
+            raise SourceError(self._public_refused(), "auth")
         if status == 401:
             raise SourceError("Jira rejected the email or API token (wrong, expired or revoked). Create a new API token and update the variable or keychain entry.", "auth")
         if status == 403:
@@ -148,10 +158,33 @@ class JiraApi:
         self._identity_confirmed = True
         return me
 
-    def _confirm_identity(self) -> None:
+    def _public_refused(self) -> str:
+        """MD-236 AC3, wording from marketing (AC10): the site does not allow anonymous reading."""
+        return (f"{self.host} doesn't let anyone read these issues without a login. "
+                "Log in with your Atlassian email and API token instead, or choose a public project.")
+
+    def _confirm_public(self, jql: str | None) -> None:
+        """MD-236: the public-mode counterpart of ``_confirm_identity``. A site that is not public answers an anonymous search, count and
+        project list with 200 and nothing, so an empty answer is trusted only once the site has shown it serves data anonymously: the JQL's
+        count is above 0, or the project list names at least one project. Once per run; a failure is not remembered."""
+        if self._identity_confirmed:
+            return
+        if jql is not None:
+            self._public_count = self._matches(jql)
+            if self._public_count > 0:
+                self._identity_confirmed = True
+                return
+        page = self.request("GET", "/rest/api/3/project/search", {"maxResults": 1})
+        if not isinstance(page, dict) or not page.get("values"):
+            raise SourceError(self._public_refused(), "auth")
+        self._identity_confirmed = True
+
+    def _confirm_identity(self, jql: str | None = None) -> None:
         """MD-174: Jira Cloud serves a REJECTED token on search, the project list and the count as an anonymous request (200, empty);
         only ``/myself`` answers 401. So before any of those answers is trusted, the credentials are confirmed once (a failure raises
         ``auth`` and is not remembered): a revoked token can never look like "Jira has nothing", which would plan to delete every file."""
+        if self.public:
+            return self._confirm_public(jql)
         if not self._identity_confirmed:
             self.myself()
 
@@ -164,13 +197,19 @@ class JiraApi:
             raise SourceError("Jira answered a project list with an unexpected shape.", "malformed")
         return page
 
-    def count(self, jql: str) -> int:
-        self._confirm_identity()
+    def _matches(self, jql: str) -> int:
         return int(self.request("POST", "/rest/api/3/search/approximate-count", body={"jql": jql})["count"])
+
+    def count(self, jql: str) -> int:
+        self._confirm_identity(jql)
+        if self.public and self._public_count is not None:           # the public check already asked for this count
+            count, self._public_count = self._public_count, None
+            return count
+        return self._matches(jql)
 
     def list_issues(self, jql: str, fields: str, page_size: int = PAGE_SIZE) -> list[dict]:
         """Every issue the JQL matches, across all pages. Any failing page raises: a partial list is never returned."""
-        self._confirm_identity()
+        self._confirm_identity(jql)
         issues, token = [], None
         while True:
             query = {"jql": jql, "fields": fields, "maxResults": page_size, **({"nextPageToken": token} if token else {})}

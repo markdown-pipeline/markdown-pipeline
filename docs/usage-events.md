@@ -1092,6 +1092,7 @@ Do users narrow scope today? (cheapest demand evidence). Emitted from: ui, cli.
 |---|---|
 | `source_type` | `folder` / `jira` / `other` |
 | `auth_mode` | `login` / `public` |
+| `recipe_id` | `jira-ecosystem-frge` / `jira-hibernate-hhh` / `jira-sakaiproject-sak` / `none` |
 | `kind` | `jql` / `glob` / `project` |
 | `fields_used` | list of: `status` / `priority` / `issuetype` / `updated` / `created` / `labels` / `component` / `assignee` / `project` / `sprint` / `custom` |
 | `clause_count` | whole number, 0 to 1,000 |
@@ -1109,6 +1110,7 @@ Example payload as sent:
   "properties": {
     "source_type": "jira",
     "auth_mode": "login",
+    "recipe_id": "none",
     "kind": "jql",
     "fields_used": [
       "status",

@@ -73,7 +73,7 @@ def test_a_github_destination_is_reported_as_github():
 def test_a_jira_query_at_creation_is_reported_as_a_scope_with_field_names_only(sharing):
     usage_hooks.pipeline_created(1, Pipeline("p", [jira(jql='project = ACME-SECRET AND status = "Open" ORDER BY updated')]))
     (scope,) = props("source_scope_edited")
-    assert scope == {"source_type": "jira", "auth_mode": "login", "kind": "jql", "fields_used": ["project", "status"], "clause_count": 2, "uses_order_by": True}
+    assert scope == {"source_type": "jira", "auth_mode": "login", "recipe_id": "none", "kind": "jql", "fields_used": ["project", "status"], "clause_count": 2, "uses_order_by": True}
     assert "ACME-SECRET" not in json.dumps(queued()) and SITE not in json.dumps(queued())
 
 
@@ -125,7 +125,7 @@ def test_changing_a_jira_query_reports_a_scope_edit_and_a_changed_target_reports
     old = Pipeline("p", [jira(jql="project = A")])
     new = Pipeline("p", [jira(jql="project = A AND labels = secret")], destination={"type": "github", "repo": "o/r", "branch": "main", "credential": "vault:x"})
     usage_hooks.pipeline_updated(old, new)
-    assert props("source_scope_edited") == [{"source_type": "jira", "auth_mode": "login", "kind": "jql", "fields_used": ["labels", "project"], "clause_count": 2,
+    assert props("source_scope_edited") == [{"source_type": "jira", "auth_mode": "login", "recipe_id": "none", "kind": "jql", "fields_used": ["labels", "project"], "clause_count": 2,
                                              "uses_order_by": False}]
     assert props("target_connected") == [{"target_type": "github"}]
 

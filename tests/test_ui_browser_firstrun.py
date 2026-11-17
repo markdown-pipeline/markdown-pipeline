@@ -89,6 +89,9 @@ def test_folder_path_goes_from_start_to_files_in_four_clicks_and_writes_nothing_
     assert c.n == 4 and len(list(dest.rglob("*.md"))) == 7                      # folder, Continue, Use this folder (the choice), Write
 
 
+SYNC_FINISHED_MS = 90_000      # a ceiling for the finished-state wait on the slow Windows VM; it returns the moment the result screen shows
+
+
 def test_jira_path_connects_reviews_and_writes_in_five_clicks(page, brain, jira, tmp_path):
     c = Clicks(page)
     with running_ui(brain) as ui:
@@ -108,6 +111,7 @@ def test_jira_path_connects_reviews_and_writes_in_five_clicks(page, brain, jira,
         expect(page.locator("#fr-review")).to_contain_text("ACME-1 ")
         expect(page.locator("#fr-review")).to_contain_text("Read-only: we never change anything in Jira.")
         c.click(page.get_by_role("button", name="Write 6 files"))
+        expect(page.locator("#fr-ready .fr-next")).to_be_visible(timeout=SYNC_FINISHED_MS)     # MD-245: wait on the sync's finished state (the result screen), not on a 5 s text wait
         expect(page.locator("#fr-ready")).to_contain_text("6 files in")
     assert c.n == 5                                                                  # Jira, Test and continue, Continue with 6 issues, Use this folder, Write
     assert TOKEN not in (brain.config_dir / "config.yaml").read_text()

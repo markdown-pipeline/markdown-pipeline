@@ -253,9 +253,9 @@ EVENTS: dict[str, Event] = {
                              {"n_pipelines": 1, "recipe_id": "none", "is_sample": False}),
     # --- D. the one intent event instrumented now ---
     "source_scope_edited": Event("Do users narrow scope today? (cheapest demand evidence)", ("ui", "cli"),
-                                 {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "kind": SCOPE_KIND, "fields_used": QUERY_FIELDS, "clause_count": Count(1000),
+                                 {"source_type": SOURCE_TYPE, "auth_mode": AUTH_MODE, "recipe_id": RECIPE_ID, "kind": SCOPE_KIND, "fields_used": QUERY_FIELDS, "clause_count": Count(1000),
                                   "pattern_count": Count(1000), "uses_order_by": Flag()},
-                                 {"source_type": "jira", "auth_mode": "login", "kind": "jql", "fields_used": ["status", "updated"], "clause_count": 2,
+                                 {"source_type": "jira", "auth_mode": "login", "recipe_id": "none", "kind": "jql", "fields_used": ["status", "updated"], "clause_count": 2,
                                   "pattern_count": 0, "uses_order_by": True}),
     "jira_project_pick": Event("Does the project picker cut the Jira step? (MD-141: method and a bucket, never a key, name or query)", ("ui",),
                                {"method": PICK_METHOD, "count_bucket": BUCKET}, {"method": "picker", "count_bucket": "1-10"}),

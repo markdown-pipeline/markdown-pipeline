@@ -15,6 +15,9 @@ _listener: Callable[[dict], None] | None = None
 def _text(s: dict) -> str:
     noun, source, done, total = s["noun"], s["source"], s["done"], s["total"]
     where = f" {'in' if s['phase'] == 'listing' else 'from'} {source}" if source else ""
+    if total is None and s["phase"] != "listing":                 # MD-246: no total yet -> a count, never "of None"
+        verb = "Writing files" if s["phase"] == "writing" else f"Reading {noun}{where}"
+        return f"{verb}… {done} so far"
     if s["phase"] == "listing":
         return f"Finding {noun}{where}… {done} so far"
     if s["phase"] == "writing":

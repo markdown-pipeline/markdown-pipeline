@@ -27,6 +27,14 @@ def test_an_active_step_reports_phase_counts_and_a_plain_sentence():
     assert cur["text"] == "Reading issues from Jira… 120 of 210"
 
 
+@pytest.mark.parametrize("phase,noun,source", [("reading", "issues", "Jira"), ("reading", "files", ""), ("writing", "files", "")])
+def test_an_unknown_total_never_prints_none(phase, noun, source):  # MD-246
+    progress.start(phase, noun=noun, source=source)
+    progress.report(phase, 0)
+    text = progress.current()["text"]
+    assert "None" not in text and "of" not in text and "0 so far" in text
+
+
 def test_listing_without_a_known_total_says_how_many_so_far():
     progress.start("listing", noun="issues", source="Jira")
     progress.report("listing", 100)

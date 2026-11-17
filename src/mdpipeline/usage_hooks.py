@@ -198,12 +198,12 @@ def _destination_key(pipeline) -> tuple:
 def _emit_jql_scope(source) -> None:
     jql = (source.options or {}).get("jql", "")
     if source.type == "jira" and jql.strip():
-        usage.emit("source_scope_edited", source_type="jira", **auth_mode_props([source]), kind="jql", **jql_profile(jql))
+        usage.emit("source_scope_edited", source_type="jira", **auth_mode_props([source]), recipe_id=recipe_id_of([source]), kind="jql", **jql_profile(jql))
 
 
 def _emit_glob_scope(pipeline) -> None:
     if list(pipeline.include) != list(DEFAULT_INCLUDE) or list(pipeline.exclude) != list(DEFAULT_EXCLUDE):
-        usage.emit("source_scope_edited", source_type=source_type_of(pipeline), **auth_mode_props(pipeline.sources), kind="glob",
+        usage.emit("source_scope_edited", source_type=source_type_of(pipeline), **auth_mode_props(pipeline.sources), recipe_id=recipe_id_of(pipeline.sources), kind="glob",
                    pattern_count=len(pipeline.include) + len(pipeline.exclude))
 
 
@@ -211,7 +211,8 @@ def _source_added(source, total: int, is_sample: bool) -> None:
     recipe = recipe_id_of([source])
     usage.emit("source_added", source_type=_kind_of(source), **auth_mode_props([source]), recipe_id=recipe, n_sources=total, is_sample=is_sample)
     usage.emit("source_connected", source_type=_kind_of(source), **auth_mode_props([source]), recipe_id=recipe, is_sample=is_sample)
-    _emit_jql_scope(source)
+    if recipe == "none":                 # MD-243: a recipe's built-in query is the app's choice, not a person narrowing scope
+        _emit_jql_scope(source)
 
 
 def pipeline_created(n_pipelines: int, pipeline) -> None:

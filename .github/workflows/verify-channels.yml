@@ -1,6 +1,8 @@
 # DEV-13 (epic DEV-9, product 2026-11-09): after a release, check that every install channel serves the new version.
 # It fails loudly (red run + a table in the job summary) if any channel is behind. Read-only: it publishes nothing.
 # WHEN: after publish-registry completes (whatever its result), or by hand for any version. Hosted runners are free on this public repo.
+# DEV-18: the GitHub API is read with the workflow's GITHUB_TOKEN (the anonymous per-IP limit on shared hosted runners gave a false BEHIND
+# after 0.1.27, run 44721027819). A check that can't read a channel shows UNREADABLE, not BEHIND, and still fails the run (see the error line).
 # The team sees failures through `gh run list -R markdown-pipeline/markdown-pipeline -w verify-channels --limit 3` (product's daily sync).
 name: verify-channels
 on:
@@ -38,13 +40,17 @@ jobs:
       - name: Check the channels (retries for up to ~15 min for registry and CDN lag)
         env:
           V: ${{ steps.v.outputs.version }}
+          GH_TOKEN: ${{ github.token }}    # read-only (permissions: contents: read); 1,000 req/h per repo instead of 60/h per shared IP
         run: |
           set -u
           cat > /tmp/check.py <<'PY'
           import json, os, subprocess, sys, urllib.request
           V = os.environ["V"]
           def get(url):
-              req = urllib.request.Request(url, headers={"User-Agent": "markdown-pipeline-verify-channels", "Accept": "application/json"})
+              headers = {"User-Agent": "markdown-pipeline-verify-channels", "Accept": "application/json"}
+              if url.startswith("https://api.github.com/") and os.environ.get("GH_TOKEN"):
+                  headers["Authorization"] = "Bearer " + os.environ["GH_TOKEN"]
+              req = urllib.request.Request(url, headers=headers)
               with urllib.request.urlopen(req, timeout=30) as r:
                   return json.load(r)
           def pypi():
@@ -75,24 +81,34 @@ jobs:
           for name in only:
               try:
                   result[name] = checks[name]()
-              except Exception as e:  # a channel that can't be read is behind
+              except Exception as e:  # the check couldn't read the channel: UNREADABLE, not BEHIND (DEV-18)
                   result[name] = f"error: {type(e).__name__}: {e}"[:160]
           json.dump(result, sys.stdout)
           PY
           for i in $(seq 1 10); do
             python3 /tmp/check.py > /tmp/result.json
-            behind="$(python3 -c 'import json,os;r=json.load(open("/tmp/result.json"));print(sum(v!=os.environ["V"] for v in r.values()))')"
+            behind="$(python3 -c 'import json,os;r=json.load(open("/tmp/result.json"));print(sum(v!=os.environ["V"] and not v.startswith("error:") for v in r.values()))')"
+            unreadable="$(python3 -c 'import json;r=json.load(open("/tmp/result.json"));print(sum(v.startswith("error:") for v in r.values()))')"
             cat /tmp/result.json; echo
-            [ "$behind" = "0" ] && break
-            [ "$i" = "10" ] || { echo "$behind channel(s) behind, retry $i/10 in 90 s"; sleep 90; }
+            [ "$behind" = "0" ] && [ "$unreadable" = "0" ] && break
+            [ "$i" = "10" ] || { echo "$behind channel(s) behind, $unreadable unreadable, retry $i/10 in 90 s"; sleep 90; }
           done
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json, os
           V = os.environ["V"]; r = json.load(open("/tmp/result.json"))
-          print(f"## Channels for {V}\n\n| Channel | Version seen | OK |\n|---|---|---|")
+          def state(v):
+              return "OK" if v == V else "**UNREADABLE**" if v.startswith("error:") else "**BEHIND**"
+          print(f"## Channels for {V}\n\n| Channel | Version seen | State |\n|---|---|---|")
           for k, v in r.items():
-              print(f"| {k} | {v} | {'OK' if v == V else '**BEHIND**'} |")
+              print(f"| {k} | {v} | {state(v)} |")
           print("| Glama | not checked (its API needs an API key; see DEV-12) | - |")
+          behind = [k for k, v in r.items() if state(v) == "**BEHIND**"]
+          unreadable = [k for k, v in r.items() if state(v) == "**UNREADABLE**"]
+          print(f"\n**Channel behind** (a channel serves another version: act on the channel): {', '.join(behind) or 'none'}")
+          print(f"\n**Check error** (the check could not read the channel; the channel may be fine: re-run, then look at the error): {', '.join(unreadable) or 'none'}")
           PY
           cat "$GITHUB_STEP_SUMMARY"
-          [ "$behind" = "0" ] || { echo "::error::$behind channel(s) do not serve $V: see the table in the job summary"; exit 1; }
+          rc=0
+          [ "$behind" = "0" ] || { echo "::error::$behind channel(s) do not serve $V (channel behind): see the table in the job summary"; rc=1; }
+          [ "$unreadable" = "0" ] || { echo "::error::$unreadable channel(s) UNREADABLE (check error, not proven behind): re-run the workflow; see the table in the job summary"; rc=1; }
+          exit $rc

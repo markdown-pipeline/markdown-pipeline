@@ -53,3 +53,8 @@ def publish(tmp, dst) -> None:
         except OSError:
             pass
         raise
+
+
+def read_text(path, encoding: str = "utf-8") -> str:
+    """``Path.read_text`` that waits out a short Windows refusal (the file is being replaced just now: MD-239); POSIX reads once."""
+    return retry_permission(lambda: path.read_text(encoding=encoding))

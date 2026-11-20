@@ -1,6 +1,7 @@
 """MD-162 in a real browser: Home updates by itself. After "Start it" the "not running" line is replaced by the next sync time (no reload);
 a failed start says so with one next step; the button cannot be pressed twice; notices and the background starting/stopping show within seconds."""
 import re
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -46,6 +47,10 @@ def never_reloaded(page):
     return page.evaluate("window.__no_reload") == 42
 
 
+# MD-241: the UI says "Next sync at 14:05" when the next sync is today and "Next sync at Fri 00:22" when it falls on another day. Both are right.
+NEXT_SYNC_TEXT = re.compile(r"Next sync (at (\w{3} )?\d{1,2}:\d{2}|in a moment)")
+
+
 def test_after_start_it_the_not_running_line_gives_way_to_the_next_sync_time_with_no_reload(page, one, proc, monkeypatch):
     monkeypatch.setattr(autostart, "start_now", lambda python=None: proc.start(start_after=1.0) or True)     # the process takes a moment to come up
     with running_ui(one) as ui:
@@ -54,9 +59,20 @@ def test_after_start_it_the_not_running_line_gives_way_to_the_next_sync_time_wit
         expect(page.locator("#bg-not-running")).to_be_visible()
         page.get_by_role("button", name="Start it").click()
         expect(page.locator("#bg-not-running")).to_have_count(0, timeout=8000)
-        expect(page.locator("#bg-next")).to_contain_text(re.compile(r"Next sync (at \d{1,2}:\d{2}|in a moment)"))
+        expect(page.locator("#bg-next")).to_contain_text(NEXT_SYNC_TEXT)
         assert never_reloaded(page)
         shot(page, "home-background-started")
+
+
+def test_when_the_next_sync_is_on_another_day_the_line_names_the_day(page, one, proc, monkeypatch):
+    """MD-241 AC2: the page clock is pinned to 23:50 the evening before the next sync, so the day always differs; no waiting for midnight."""
+    monkeypatch.setattr(autostart, "start_now", lambda python=None: proc.start(start_after=1.0) or True)
+    with running_ui(one) as ui:
+        open_app(page, ui)
+        page.clock.set_fixed_time(datetime.now().replace(hour=23, minute=50, second=0, microsecond=0) - timedelta(days=1))
+        page.get_by_role("button", name="Start it").click()
+        expect(page.locator("#bg-not-running")).to_have_count(0, timeout=8000)
+        expect(page.locator("#bg-next")).to_contain_text(re.compile(r"Next sync at [A-Z][a-z]{2} \d{1,2}:\d{2}"))
 
 
 def test_while_starting_the_button_shows_progress_and_cannot_be_pressed_twice(page, one, proc, monkeypatch):

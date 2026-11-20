@@ -138,7 +138,7 @@ class UsageStore:
     # -- storage -------------------------------------------------------------------------------------------------
     def _read(self) -> dict:
         try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
+            data = json.loads(fsretry.read_text(self._path))
         except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}

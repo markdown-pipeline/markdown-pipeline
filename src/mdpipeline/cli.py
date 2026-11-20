@@ -1569,6 +1569,8 @@ def cmd_status(args) -> int:
             print(f"    last run: {last['ts']} via {last['trigger']}  result: {last['result']}  {count_line(last['counts'])}")
         else:
             print("    last run: never")
+        if s.get("schedule_problem"):
+            print(f"    schedule: {s['schedule_problem']['message']}")
         for c in s["conflicts"]:
             print(f"    conflict ({c['type']}): {c['path']}")
             if c.get("next_step"):
@@ -1735,6 +1737,8 @@ def cmd_schedule(args) -> int:
         last = "never" if p["last_sync"] is None else f"{human_age(now - parse_ts(p['last_sync']))} ago"
         nxt = "-" if p["next_sync"] is None and p["schedule"] == "off" else _when(p["next_sync"], now)
         print(f"{p['name']}: {interval}; last sync {last}; next sync {nxt}" + ("; paused" if p["paused"] else ""))
+        if p.get("schedule_problem"):                                       # MD-240: never "next sync now" for weeks without saying why
+            print(f"    {p['schedule_problem']['message']}")
     return EXIT_OK
 
 

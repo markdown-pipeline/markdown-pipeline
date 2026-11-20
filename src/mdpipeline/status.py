@@ -8,7 +8,7 @@ from .brain import Brain
 from .config import load_config
 from .destinations import bind_target, credential_conflict_message, credential_conflict_of, describe_destination, destination_key
 from .log import ActivityLog
-from .schedule import next_sync
+from .schedule import interval_seconds, next_sync
 from .state import State
 from .target import TargetError
 
@@ -143,6 +143,7 @@ def brain_status(brain: Brain, pipeline: str | None = None, now: float | None = 
             "schedule": p.schedule,                                     # MD-121: the interval, when it last ran and when it runs next
             "last_sync": last["ts"] if last else None,
             "next_sync": next_sync(p, parse_ts(last["ts"]) if last else None, now),
+            "schedule_problem": _schedule_problem(brain, p, parse_ts(last["ts"]) if last else None, now),
             "paused": p.paused,
             "target": target_info,
             "last_run": last,
@@ -172,6 +173,26 @@ def brain_status(brain: Brain, pipeline: str | None = None, now: float | None = 
                        f"Ask the user to run `{RESTART_COMMAND}` or open the app.")
         result.update(stale=True, stale_reason="background_not_running", message_for_user=message)
     return result
+
+
+def _schedule_problem(brain: Brain, pipeline, last_run: float | None, now: float) -> dict | None:
+    """MD-240: a pipeline that looks scheduled but will not run. ``not_served``: the background does not know this brain (it is added by a sync).
+    ``overdue``: its last sync is more than twice its interval ago. Nothing is promised when background sync is off or the pipeline is paused/off."""
+    from . import scheduler
+    from .schedulestore import SchedulerStore
+
+    seconds = interval_seconds(pipeline.schedule)
+    if seconds is None or pipeline.paused or not scheduler.background_enabled():
+        return None
+    if str(brain.root) not in SchedulerStore().read()["brains"]:
+        return {"kind": "not_served", "message": (f"Background sync isn't serving this output folder, so '{pipeline.name}' will not sync by itself. "
+                                                  f"Run `mdpipeline sync {pipeline.name}` once to add it.")}
+    if last_run is not None and now - last_run > 2 * seconds:
+        from .cli import human_age
+
+        return {"kind": "overdue", "message": (f"'{pipeline.name}' is overdue: its last sync was {human_age(now - last_run)} ago and it is set to run every "
+                                               f"{pipeline.schedule}. Run `{RESTART_COMMAND}`, or `mdpipeline sync {pipeline.name}` to sync now.")}
+    return None
 
 
 def _with_paths(conflicts: list[dict], ps) -> list[dict]:

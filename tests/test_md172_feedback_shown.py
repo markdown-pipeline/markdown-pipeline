@@ -8,7 +8,7 @@ import pytest
 playwright_sync = pytest.importorskip("playwright.sync_api")
 from playwright.sync_api import expect  # noqa: E402
 
-from mdpipeline import autostart, notices, uiapi, usage  # noqa: E402
+from mdpipeline import autostart, fsretry, notices, uiapi, usage  # noqa: E402
 from mdpipeline.config import Pipeline  # noqa: E402
 from mdpipeline.log import ActivityLog  # noqa: E402
 from mdpipeline.usage import UsageStore  # noqa: E402
@@ -32,7 +32,7 @@ def sharing():
 
 
 def queued(*names):
-    entries = json.loads((usage.data_dir() / "usage.json").read_text()).get("queue", [])
+    entries = json.loads(fsretry.read_text(usage.data_dir() / "usage.json")).get("queue", [])
     return [e for e in entries if not names or e["event"] in names]
 
 
